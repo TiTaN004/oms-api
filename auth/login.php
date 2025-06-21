@@ -35,12 +35,15 @@ class LoginAPI {
             // Query with JOIN to get operation type info
             $sql = "SELECT u.userID, u.fullName, u.userName, u.emailID, u.mobileNo, 
                            u.password, u.operationTypeID, u.isAdmin, u.isActive,
-                           ot.operation_type, ot.is_active as operation_active
+                           ot.operationName	, ot.isActive as operation_active
                     FROM user u 
                     LEFT JOIN operation_type ot ON u.operationTypeID = ot.id 
                     WHERE u.userName = ? AND u.isActive = 1";
             
             $stmt = $this->conn->prepare($sql);
+            if (!$stmt) {
+    return $this->sendResponse("SQL Prepare Error: " . $this->conn->error, 500, 0, []);
+}
             $stmt->bind_param("s", $userName);
             $stmt->execute();
             $result = $stmt->get_result();
@@ -51,10 +54,10 @@ class LoginAPI {
             
             $user = $result->fetch_assoc();
 
-            $hashedPassword = trim($user['password']);
+            $dbPassword = trim($user['password']);
 
             // Verify password (assuming you're using password_hash())
-            if (!password_verify($password, $hashedPassword)) {
+            if ($password != $dbPassword) {
                 return $this->sendResponse("Invalid credentials wrong password", 401, 0, []);
             }
             

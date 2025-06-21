@@ -45,7 +45,7 @@ class TokenVerifier {
             // Check if token exists in database and user is active
             $userId = $payload['UserId'];
             $sql = "SELECT u.userID, u.fullName, u.userName, u.emailID, u.isAdmin, u.isActive, u.operationTypeID,
-                           ot.operation_type
+                           ot.operationName
                     FROM user u 
                     LEFT JOIN operation_type ot ON u.operationTypeID = ot.id 
                     WHERE u.userID = ? AND u.token = ? AND u.isActive = 1";
@@ -70,7 +70,7 @@ class TokenVerifier {
                 'isAdmin' => (bool)$user['isAdmin'],
                 'isActive' => (bool)$user['isActive'],
                 'operationTypeID' => (int)$user['operationTypeID'],
-                'operationType' => $user['operation_type']
+                'operationType' => $user['operationName']
             ];
             
             return $this->sendResponse("Token valid", 200, 1, $userData);

@@ -75,7 +75,7 @@ class ResetPasswordAPI {
             $otpRecord = $otpResult->fetch_assoc();
             
             // Hash the new password
-            $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+            // $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
             
             // Start transaction
             $this->conn->begin_transaction();
@@ -83,7 +83,7 @@ class ResetPasswordAPI {
             try {
                 // Update user password
                 $stmt = $this->conn->prepare("UPDATE user SET password = ? WHERE userID = ?");
-                $stmt->bind_param("si", $hashedPassword, $user['userID']);
+                $stmt->bind_param("si", $newPassword, $user['userID']);
                 
                 if (!$stmt->execute()) {
                     throw new Exception('Failed to update password');
