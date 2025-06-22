@@ -30,27 +30,32 @@ switch($method) {
         break;
     
     case 'POST':
-        createProduct($conn);
-        break;
-    
-    case 'PUT':
         if (isset($_GET['id'])) {
             updateProduct($conn, $_GET['id']);
-        } else {
-            echo json_encode(['error' => 'Product ID is required for update']);
+        }
+        else{
+            createProduct($conn);
         }
         break;
+    
+    // case 'PUT':
+    //     if (isset($_GET['id'])) {
+    //         updateProduct($conn, $_GET['id']);
+    //     } else {
+    //         echo json_encode(['success' => false, 'error' => 'Product ID is required for update']);
+    //     }
+    //     break;
     
     case 'DELETE':
         if (isset($_GET['id'])) {
             deleteProduct($conn, $_GET['id']);
         } else {
-            echo json_encode(['error' => 'Product ID is required for delete']);
+            echo json_encode(['success' => false, 'error' => 'Product ID is required for delete']);
         }
         break;
     
     default:
-        echo json_encode(['error' => 'Method not allowed']);
+        echo json_encode(['success' => false, 'error' => 'Method not allowed']);
         break;
 }
 
@@ -64,6 +69,7 @@ function getAllProducts($conn) {
             $products[] = [
                 'srno' => $row['id'],
                 'productName' => $row['product_name'],
+                'product_image' => $row['product_image'] ? 'http://localhost/freelancing/oms-api/uploads/products/' . $row['product_image'] : null,
                 'image' => $row['product_image'] ? 'http://localhost/freelancing/oms-api/uploads/products/' . $row['product_image'] : null,
                 'isActive' => (bool)$row['is_active']
             ];
@@ -85,6 +91,7 @@ function getProduct($conn, $id) {
         $product = [
             'srno' => $row['id'],
             'productName' => $row['product_name'],
+            'product_image' => $row['product_image'] ? 'http://localhost/freelancing/oms-api/uploads/products/' . $row['product_image'] : null,
             'image' => $row['product_image'] ? 'http://localhost/freelancing/oms-api/uploads/products/' . $row['product_image'] : null,
             'isActive' => (bool)$row['is_active']
         ];
@@ -97,8 +104,12 @@ function getProduct($conn, $id) {
 }
 
 function createProduct($conn) {
+    // Debug: Log received data
+    error_log("POST data: " . print_r($_POST, true));
+    error_log("FILES data: " . print_r($_FILES, true));
+    
     $product_name = $_POST['product_name'] ?? '';
-    $is_active = isset($_POST['is_active']) ? (bool)$_POST['is_active'] : true;
+    $is_active = isset($_POST['is_active']) ? ($_POST['is_active'] === '1' || $_POST['is_active'] === 'true' || $_POST['is_active'] === true) : true;
     
     // Validate required fields
     if (empty($product_name)) {
@@ -108,7 +119,7 @@ function createProduct($conn) {
     
     $image_filename = null;
     
-    // Handle image upload
+    // Handle image upload - Check for 'product_image' field name from frontend
     if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] === UPLOAD_ERR_OK) {
         $image_filename = handleImageUpload($_FILES['product_image']);
         if (!$image_filename) {
@@ -126,7 +137,8 @@ function createProduct($conn) {
     
     $sql = "INSERT INTO product (product_name, product_image, is_active) VALUES (?, ?, ?)";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "ssi", $product_name, $image_filename, $is_active);
+    $is_active_int = $is_active ? 1 : 0;
+    mysqli_stmt_bind_param($stmt, "ssi", $product_name, $image_filename, $is_active_int);
     
     if (mysqli_stmt_execute($stmt)) {
         $product_id = mysqli_insert_id($conn);
@@ -148,6 +160,10 @@ function createProduct($conn) {
 }
 
 function updateProduct($conn, $id) {
+    // Debug: Log received data
+    error_log("PUT - POST data: " . print_r($_POST, true));
+    error_log("PUT - FILES data: " . print_r($_FILES, true));
+    
     // Get current product data
     $sql = "SELECT * FROM product WHERE id = ?";
     $stmt = mysqli_prepare($conn, $sql);
@@ -163,17 +179,17 @@ function updateProduct($conn, $id) {
     }
     
     $product_name = $_POST['product_name'] ?? $current_product['product_name'];
-    $is_active = isset($_POST['is_active']) ? (bool)$_POST['is_active'] : (bool)$current_product['is_active'];
+    $is_active = isset($_POST['is_active']) ? ($_POST['is_active'] === '1' || $_POST['is_active'] === 'true' || $_POST['is_active'] === true) : (bool)$current_product['is_active'];
     $image_filename = $current_product['product_image'];
     
-    // Handle new image upload
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+    // Handle new image upload - Check for 'product_image' field name from frontend
+    if (isset($_FILES['product_image']) && $_FILES['product_image']['error'] === UPLOAD_ERR_OK) {
         // Delete old image if exists
         if ($image_filename && file_exists('../uploads/products/' . $image_filename)) {
             unlink('../uploads/products/' . $image_filename);
         }
         
-        $image_filename = handleImageUpload($_FILES['image']);
+        $image_filename = handleImageUpload($_FILES['product_image']);
         if (!$image_filename) {
             echo json_encode(['success' => false, 'error' => 'Failed to upload new image']);
             return;
@@ -193,7 +209,8 @@ function updateProduct($conn, $id) {
     
     $sql = "UPDATE product SET product_name = ?, product_image = ?, is_active = ? WHERE id = ?";
     $stmt = mysqli_prepare($conn, $sql);
-    mysqli_stmt_bind_param($stmt, "ssii", $product_name, $image_filename, $is_active, $id);
+    $is_active_int = $is_active ? 1 : 0;
+    mysqli_stmt_bind_param($stmt, "ssii", $product_name, $image_filename, $is_active_int, $id);
     
     if (mysqli_stmt_execute($stmt)) {
         echo json_encode([
@@ -254,11 +271,13 @@ function handleImageUpload($file) {
     
     // Validate file type
     if (!in_array($file['type'], $allowed_types)) {
+        error_log("Invalid file type: " . $file['type']);
         return false;
     }
     
     // Validate file size
     if ($file['size'] > $max_size) {
+        error_log("File too large: " . $file['size']);
         return false;
     }
     
@@ -272,6 +291,7 @@ function handleImageUpload($file) {
         return $filename;
     }
     
+    error_log("Failed to move uploaded file");
     return false;
 }
 
