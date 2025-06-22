@@ -5,6 +5,7 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 require_once '../config.php'; // Use the mysqli connection
+date_default_timezone_set('Asia/Kolkata');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -119,7 +120,7 @@ function getAllCastingOrders($conn) {
 function getCastingOrder($conn, $id) {
     $stmt = $conn->prepare("SELECT 
                 co.CastingOrderId as id,
-                cm.client_name as client,
+                cm.clientName as client,
                 u.fullName as user,
                 p.product_name as product,
                 co.quantity as qty,
