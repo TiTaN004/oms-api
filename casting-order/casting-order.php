@@ -238,7 +238,7 @@ function deleteCastingOrder($conn, $id) {
 }
 
 function getDefaultOperationType($conn) {
-    $result = $conn->query("SELECT id FROM operation_type WHERE is_active = 1 LIMIT 1");
+    $result = $conn->query("SELECT id FROM operation_type WHERE isActive = 1 LIMIT 1");
     $row = $result->fetch_assoc();
     return $row ? (int)$row['id'] : 1;
 }
