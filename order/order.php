@@ -10,6 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 require_once '../config.php';
+date_default_timezone_set('Asia/Kolkata');
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path_info = isset($_SERVER['PATH_INFO']) ? trim($_SERVER['PATH_INFO'], '/') : '';
@@ -198,7 +199,7 @@ function createOrder() {
     $productWeightTypeID = mysqli_real_escape_string($conn, $input['productWeightTypeID']);
     $productQty = mysqli_real_escape_string($conn, $input['productQty']);
     $pricePerQty = mysqli_real_escape_string($conn, $input['pricePerQty'] ?? 0);
-    $remark = mysqli_real_escape_string($conn, $input['remark'] ?? '');
+    $remark = mysqli_real_escape_string($conn, $input['description'] ?? '');
     
     $query = "INSERT INTO `order` (
         orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
@@ -212,7 +213,7 @@ function createOrder() {
     
     if (mysqli_query($conn, $query)) {
         $orderId = mysqli_insert_id($conn);
-        sendResponse('Order created successfully!', 201, 1, ['orderID' => $orderId]);
+        sendResponse('Order created successfully!', 200, 1, ['orderID' => $orderId]);
     } else {
         sendResponse('Error creating order: ' . mysqli_error($conn), 500, 0);
     }
@@ -290,8 +291,8 @@ function updateOrder($orderId) {
         $update_fields[] = "pricePerQty = '$pricePerQty'";
     }
     
-    if (isset($input['remark'])) {
-        $remark = mysqli_real_escape_string($conn, $input['remark']);
+    if (isset($input['description'])) {
+        $remark = mysqli_real_escape_string($conn, $input['description']);
         $update_fields[] = "remark = '$remark'";
     }
     
