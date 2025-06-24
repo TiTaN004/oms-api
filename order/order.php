@@ -20,6 +20,8 @@ switch ($method) {
     case 'GET':
         if (empty($path_info)) {
             getAllOrders();
+        } elseif ($segments[0] === 'history' && isset($segments[1])) {
+            getOrderHistory($segments[1]);
         } else {
             getOrderById($segments[0]);
         }
@@ -50,16 +52,16 @@ switch ($method) {
         break;
 }
 
-
-
 function getAllOrders()
 {
     global $conn;
 
+    // Only get active orders (latest version of each order)
     $query = "SELECT 
         ROW_NUMBER() OVER (ORDER BY o.orderID) as rowNumber,
         o.orderID,
         o.parentOrderID,
+        COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
         o.orderNo,
         DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
         o.fClientID,
@@ -81,7 +83,12 @@ function getAllOrders()
         1 as isDelete,
         o.productWeightTypeID,
         o.totalWeight,
-        o.isActive
+        o.isActive,
+        o.status,
+        DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+        -- Count how many times this order has been reassigned
+        (SELECT COUNT(*) FROM `order` o2 
+         WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)) as assignmentCount
     FROM `order` o
     LEFT JOIN client_master cm ON o.fClientID = cm.id
     LEFT JOIN product p ON o.fProductID = p.id
@@ -112,11 +119,12 @@ function getOrderById($orderId)
 
     $orderId = mysqli_real_escape_string($conn, $orderId);
 
-    // Get main order and its history
+    // Get the current active order
     $query = "SELECT 
         ROW_NUMBER() OVER (ORDER BY o.orderID) as rowNumber,
         o.orderID,
         o.parentOrderID,
+        COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
         o.orderNo,
         DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
         o.fClientID,
@@ -153,8 +161,7 @@ function getOrderById($orderId)
     LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
     LEFT JOIN operation_type ot ON o.fOperationID = ot.id
     LEFT JOIN user u ON o.fAssignUserID = u.userID
-    WHERE (o.orderID = '$orderId' OR o.parentOrderID = '$orderId')
-    ORDER BY o.orderID ASC";
+    WHERE o.orderID = '$orderId' AND o.isActive = 1";
 
     $result = mysqli_query($conn, $query);
 
@@ -162,16 +169,63 @@ function getOrderById($orderId)
         sendResponse('Error fetching order: ' . mysqli_error($conn), 500, 0);
     }
 
-    $orders = [];
-    while ($row = mysqli_fetch_assoc($result)) {
-        $orders[] = $row;
-    }
+    $order = mysqli_fetch_assoc($result);
 
-    if (empty($orders)) {
+    if (!$order) {
         sendResponse('Order not found', 404, 0);
     }
 
-    sendResponse('Record Get Successfully!', 200, 1, $orders);
+    sendResponse('Record Get Successfully!', 200, 1, $order);
+}
+
+function getOrderHistory($orderId)
+{
+    global $conn;
+
+    $orderId = mysqli_real_escape_string($conn, $orderId);
+
+    // Get all versions of this order (including inactive ones)
+    $query = "SELECT 
+        o.orderID,
+        o.parentOrderID,
+        COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+        o.orderNo,
+        DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+        o.fClientID,
+        cm.clientName,
+        o.fAssignUserID as fUserAssignID,
+        u.fullName as assignUser,
+        o.status,
+        o.isActive,
+        DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+        DATE_FORMAT(o.updatedAt, '%d-%b-%Y %H:%i') as updatedOn,
+        CASE 
+            WHEN o.isActive = 1 THEN 'Current'
+            ELSE 'Previous'
+        END as assignmentStatus
+    FROM `order` o
+    LEFT JOIN client_master cm ON o.fClientID = cm.id
+    LEFT JOIN user u ON o.fAssignUserID = u.userID
+    WHERE (o.orderID = '$orderId' OR COALESCE(o.parentOrderID, o.orderID) = 
+           (SELECT COALESCE(parentOrderID, orderID) FROM `order` WHERE orderID = '$orderId' LIMIT 1))
+    ORDER BY o.createdAt ASC";
+
+    $result = mysqli_query($conn, $query);
+
+    if (!$result) {
+        sendResponse('Error fetching order history: ' . mysqli_error($conn), 500, 0);
+    }
+
+    $history = [];
+    while ($row = mysqli_fetch_assoc($result)) {
+        $history[] = $row;
+    }
+
+    if (empty($history)) {
+        sendResponse('Order history not found', 404, 0);
+    }
+
+    sendResponse('Order History Retrieved Successfully!', 200, 1, $history);
 }
 
 function updateOrder($orderId)
@@ -185,51 +239,76 @@ function updateOrder($orderId)
         sendResponse('Invalid JSON data', 400, 0);
     }
 
-    // Check if order exists
+    // Check if order exists and is active
     $check_query = "SELECT * FROM `order` WHERE orderID = '$orderId' AND isActive = 1";
     $check_result = mysqli_query($conn, $check_query);
 
     if (mysqli_num_rows($check_result) == 0) {
-        sendResponse('Order not found', 404, 0);
+        sendResponse('Order not found or inactive', 404, 0);
     }
 
     $current_order = mysqli_fetch_assoc($check_result);
 
-    // If user is being reassigned, create new order entry
+    // If user is being reassigned, create new order entry with proper parent tracking
     if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
         
-        // Mark current order as inactive
-        $deactivate_query = "UPDATE `order` SET isActive = 0 WHERE orderID = '$orderId'";
-        mysqli_query($conn, $deactivate_query);
+        // Mark current order as inactive and set updated timestamp
+        $deactivate_query = "UPDATE `order` SET 
+            isActive = 0, 
+            updatedAt = NOW(),
+            remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')
+            WHERE orderID = '$orderId'";
+        
+        if (!mysqli_query($conn, $deactivate_query)) {
+            sendResponse('Error deactivating current order: ' . mysqli_error($conn), 500, 0);
+        }
 
-        // Create new order with same details but new user
-        $parentOrderID = $current_order['parentOrderID'] ?? $orderId;
+        // Determine the original order ID (parent chain)
+        $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
         $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
         
+        // Create new order with proper parent tracking
         $insert_query = "INSERT INTO `order` (
             parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
             orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-            productQty, pricePerQty, totalPrice, totalWeight, remark, description, status, isActive
+            productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+            status, isActive, createdAt
         ) VALUES (
-            '$parentOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+            '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
             '{$current_order['fProductID']}', '{$current_order['fOperationID']}', '$new_fAssignUserID',
             '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
             '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
             '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
-            '{$current_order['totalWeight']}', '{$current_order['remark']}', 
-            '" . mysqli_real_escape_string($conn, $input['description'] ?? '') . "', 'Processing', 1
+            '{$current_order['totalWeight']}', 
+            '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous user]') . "',
+            '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+            'Processing', 1, NOW()
         )";
 
         if (mysqli_query($conn, $insert_query)) {
             $newOrderId = mysqli_insert_id($conn);
-            sendResponse('Order reassigned successfully!', 200, 1, ['newOrderID' => $newOrderId]);
+            
+            // Get user names for response
+            $user_query = "SELECT 
+                (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
+                (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser";
+            $user_result = mysqli_query($conn, $user_query);
+            $users = mysqli_fetch_assoc($user_result);
+            
+            sendResponse('Order reassigned successfully!', 200, 1, [
+                'newOrderID' => $newOrderId,
+                'originalOrderID' => $originalOrderID,
+                'previousUser' => $users['previousUser'],
+                'newUser' => $users['newUser'],
+                'reassignedAt' => date('d-M-Y H:i')
+            ]);
         } else {
             sendResponse('Error reassigning order: ' . mysqli_error($conn), 500, 0);
         }
         return;
     }
 
-    // Regular update for other fields
+    // Regular update for other fields (same as before)
     $update_fields = [];
 
     if (isset($input['fClientID'])) {
@@ -277,10 +356,10 @@ function updateOrder($orderId)
         $update_fields[] = "pricePerQty = '$pricePerQty'";
     }
 
-    // if (isset($input['description'])) {
-    //     $description = mysqli_real_escape_string($conn, $input['description']);
-    //     $update_fields[] = "description = '$description'";
-    // }
+    if (isset($input['description'])) {
+        $description = mysqli_real_escape_string($conn, $input['description']);
+        $update_fields[] = "description = '$description'";
+    }
 
     if (isset($input['status'])) {
         $status = (int)$input['status'] === 1 ? 'Completed' : 'Processing';
@@ -306,7 +385,7 @@ function updateOrder($orderId)
         sendResponse('No fields to update', 400, 0);
     }
 
-    // $update_fields[] = "updatedAt = NOW()";
+    $update_fields[] = "updatedAt = NOW()";
     $query = "UPDATE `order` SET " . implode(', ', $update_fields) . " WHERE orderID = '$orderId' AND isActive = 1";
 
     if (mysqli_query($conn, $query)) {
@@ -356,16 +435,18 @@ function createOrder()
     $productQty = mysqli_real_escape_string($conn, $input['productQty']);
     $pricePerQty = mysqli_real_escape_string($conn, $input['pricePerQty'] ?? 0);
     $remark = mysqli_real_escape_string($conn, $input['remark'] ?? '');
-    // $description = mysqli_real_escape_string($conn, $input['description'] ?? '');
+    $description = mysqli_real_escape_string($conn, $input['description'] ?? '');
 
     $query = "INSERT INTO `order` (
         orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
         orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-        productQty, pricePerQty, totalPrice, totalWeight, remark, status, isActive
+        productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+        status, isActive, createdAt
     ) VALUES (
         '$orderNo', '$fClientID', '$fProductID', '$fOperationID', '$fAssignUserID',
         '$orderOn', '$weight', '$WeightTypeID', '$productWeight', '$productWeightTypeID',
-        '$productQty', '$pricePerQty', '$totalPrice', '$totalWeight', '$remark', 'Processing', 1
+        '$productQty', '$pricePerQty', '$totalPrice', '$totalWeight', '$remark', '$description',
+        'Processing', 1, NOW()
     )";
 
     if (mysqli_query($conn, $query)) {
@@ -383,17 +464,23 @@ function deleteOrder($orderId)
     $orderId = mysqli_real_escape_string($conn, $orderId);
 
     // Check if order exists
-    $check_query = "SELECT orderID FROM `order` WHERE orderID = '$orderId'";
+    $check_query = "SELECT orderID, parentOrderID FROM `order` WHERE orderID = '$orderId'";
     $check_result = mysqli_query($conn, $check_query);
 
     if (mysqli_num_rows($check_result) == 0) {
         sendResponse('Order not found', 404, 0);
     }
 
-    $query = "DELETE FROM `order` WHERE orderID = '$orderId'";
+    $order = mysqli_fetch_assoc($check_result);
+    $originalOrderID = $order['parentOrderID'] ?? $order['orderID'];
+
+    // Delete all versions of this order (including history)
+    $query = "DELETE FROM `order` WHERE orderID = '$orderId' OR 
+              COALESCE(parentOrderID, orderID) = '$originalOrderID'";
 
     if (mysqli_query($conn, $query)) {
-        sendResponse('Order deleted successfully!', 200, 1);
+        $deletedCount = mysqli_affected_rows($conn);
+        sendResponse("Order and its history deleted successfully! ($deletedCount records deleted)", 200, 1);
     } else {
         sendResponse('Error deleting order: ' . mysqli_error($conn), 500, 0);
     }
@@ -426,7 +513,7 @@ function sendResponse($message, $statusCode = 200, $outVal = 1, $data = null)
     echo json_encode($response);
     exit;
 }
-// Function to validate required fields
+
 function validateFields($data, $required_fields)
 {
     $missing_fields = [];
