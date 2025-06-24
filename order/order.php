@@ -74,7 +74,6 @@ function getAllOrders()
         o.productQty,
         o.pricePerQty,
         o.totalPrice,
-        o.description,
         o.fOperationID,
         ot.operationName,
         o.fAssignUserID as fUserAssignID,
@@ -278,10 +277,10 @@ function updateOrder($orderId)
         $update_fields[] = "pricePerQty = '$pricePerQty'";
     }
 
-    if (isset($input['description'])) {
-        $description = mysqli_real_escape_string($conn, $input['description']);
-        $update_fields[] = "description = '$description'";
-    }
+    // if (isset($input['description'])) {
+    //     $description = mysqli_real_escape_string($conn, $input['description']);
+    //     $update_fields[] = "description = '$description'";
+    // }
 
     if (isset($input['status'])) {
         $status = (int)$input['status'] === 1 ? 'Completed' : 'Processing';
@@ -307,7 +306,7 @@ function updateOrder($orderId)
         sendResponse('No fields to update', 400, 0);
     }
 
-    $update_fields[] = "updatedAt = NOW()";
+    // $update_fields[] = "updatedAt = NOW()";
     $query = "UPDATE `order` SET " . implode(', ', $update_fields) . " WHERE orderID = '$orderId' AND isActive = 1";
 
     if (mysqli_query($conn, $query)) {
@@ -357,16 +356,16 @@ function createOrder()
     $productQty = mysqli_real_escape_string($conn, $input['productQty']);
     $pricePerQty = mysqli_real_escape_string($conn, $input['pricePerQty'] ?? 0);
     $remark = mysqli_real_escape_string($conn, $input['remark'] ?? '');
-    $description = mysqli_real_escape_string($conn, $input['description'] ?? '');
+    // $description = mysqli_real_escape_string($conn, $input['description'] ?? '');
 
     $query = "INSERT INTO `order` (
         orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
         orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-        productQty, pricePerQty, totalPrice, totalWeight, remark, description, status, isActive
+        productQty, pricePerQty, totalPrice, totalWeight, remark, status, isActive
     ) VALUES (
         '$orderNo', '$fClientID', '$fProductID', '$fOperationID', '$fAssignUserID',
         '$orderOn', '$weight', '$WeightTypeID', '$productWeight', '$productWeightTypeID',
-        '$productQty', '$pricePerQty', '$totalPrice', '$totalWeight', '$remark', '$description', 'Processing', 1
+        '$productQty', '$pricePerQty', '$totalPrice', '$totalWeight', '$remark', 'Processing', 1
     )";
 
     if (mysqli_query($conn, $query)) {
