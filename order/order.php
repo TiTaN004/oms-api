@@ -19,7 +19,11 @@ $segments = explode('/', $path_info);
 switch ($method) {
     case 'GET':
         if (empty($path_info)) {
-            getAllOrders();
+            $userID = $_GET['userID'] ?? null;
+$isAdmin = $_GET['isAdmin'] ?? false;
+
+getAllOrders($userID, $isAdmin);
+
         } elseif ($segments[0] === 'history' && isset($segments[1])) {
             getOrderHistory($segments[1]);
         } else {
@@ -52,52 +56,196 @@ switch ($method) {
         break;
 }
 
+// function getAllOrders($isAdmin,$userID)
+// {
+//     global $conn;
+
+//     // $isAdmin = $_GET['isAdmin'];
+//     // $userID = $_GET['userID'];
+
+//        $userCondition = "";
+//     if (!$isAdmin && !empty($userID)) {
+//         $userCondition = "AND o.fAssignUserID = '$userID'";
+//     }
+//     // Only get active orders (latest version of each order)
+//     // $query = "SELECT 
+//     //     ROW_NUMBER() OVER (ORDER BY o.orderID) as rowNumber,
+//     //     o.orderID,
+//     //     o.parentOrderID,
+//     //     COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+//     //     o.orderNo,
+//     //     DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+//     //     o.fClientID,
+//     //     cm.clientName,
+//     //     o.fProductID,
+//     //     p.product_name as productName,
+//     //     o.weight,
+//     //     o.WeightTypeID as weightTypeID,
+//     //     CONCAT(o.weight, ' ', wt.name) as weightTypeText,
+//     //     o.productWeight,
+//     //     CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
+//     //     o.productQty,
+//     //     o.pricePerQty,
+//     //     o.totalPrice,
+//     //     o.description,
+//     //     o.fOperationID,
+//     //     ot.operationName,
+//     //     o.fAssignUserID as fUserAssignID,
+//     //     u.fullName as assignUser,
+//     //     1 as isDelete,
+//     //     o.productWeightTypeID,
+//     //     o.totalWeight,
+//     //     o.isActive,
+//     //     o.status,
+//     //     DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+//     //     -- Count how many times this order has been reassigned
+//     //     (SELECT COUNT(*) FROM `order` o2 
+//     //      WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)) as assignmentCount
+//     // FROM `order` o
+//     // LEFT JOIN client_master cm ON o.fClientID = cm.id
+//     // LEFT JOIN product p ON o.fProductID = p.id
+//     // LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
+//     // LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
+//     // LEFT JOIN operation_type ot ON o.fOperationID = ot.id
+//     // LEFT JOIN user u ON o.fAssignUserID = u.userID
+//     // WHERE 
+//     // (
+//     // o.parentOrderID IS NOT NULL
+//     // OR
+//     // NOT EXISTS (
+//     //     SELECT 1 FROM `order` c WHERE c.parentOrderID = o.orderID
+//     // )
+//     // )
+//     // ORDER BY o.orderID DESC";
+//     $query = "SELECT 
+//     ROW_NUMBER() OVER (ORDER BY o.orderID DESC) as rowNumber,
+//     o.orderID,
+//     o.parentOrderID,
+//     COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+//     o.orderNo,
+//     DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+//     o.fClientID,
+//     cm.clientName,
+//     o.fProductID,
+//     p.product_name as productName,
+//     o.weight,
+//     o.WeightTypeID as weightTypeID,
+//     CONCAT(o.weight, ' ', wt.name) as weightTypeText,
+//     o.productWeight,
+//     CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
+//     o.productQty,
+//     o.pricePerQty,
+//     o.totalPrice,
+//     o.description,
+//     o.fOperationID,
+//     ot.operationName,
+//     o.fAssignUserID as fUserAssignID,
+//     u.fullName as assignUser,
+//     1 as isDelete,
+//     o.productWeightTypeID,
+//     o.totalWeight,
+//     o.isActive,
+//     o.status,
+//     DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+//     -- Count how many times this order has been reassigned
+//     (
+//         SELECT COUNT(*) FROM `order` o2 
+//         WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)
+//     ) as assignmentCount
+// FROM `order` o
+// LEFT JOIN client_master cm ON o.fClientID = cm.id
+// LEFT JOIN product p ON o.fProductID = p.id
+// LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
+// LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
+// LEFT JOIN operation_type ot ON o.fOperationID = ot.id
+// LEFT JOIN user u ON o.fAssignUserID = u.userID
+// WHERE o.orderID IN (
+//     SELECT MAX(orderID)
+//     FROM `order`
+//     GROUP BY COALESCE(parentOrderID, orderID)
+// )
+// $userCondition
+// ORDER BY o.orderID DESC;";
+
+//     $result = mysqli_query($conn, $query);
+
+//     if (!$result) {
+//         sendResponse('Error fetching orders: ' . mysqli_error($conn), 500, 0);
+//     }
+
+//     $orders = [];
+//     while ($row = mysqli_fetch_assoc($result)) {
+//         $orders[] = $row;
+//     }
+
+//     sendResponse('Records Get Successfully!', 200, 1, $orders);
+// }
+
 function getAllOrders()
 {
     global $conn;
 
-    // Only get active orders (latest version of each order)
+    $userID = $_GET['userID'] ?? null;
+    $isAdmin = $_GET['isAdmin'] ?? 'false';
+    $isAdmin = $isAdmin === 'true'; // ensure it's boolean
+
+    // Base query
     $query = "SELECT 
-        ROW_NUMBER() OVER (ORDER BY o.orderID) as rowNumber,
-        o.orderID,
-        o.parentOrderID,
-        COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
-        o.orderNo,
-        DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
-        o.fClientID,
-        cm.clientName,
-        o.fProductID,
-        p.product_name as productName,
-        o.weight,
-        o.WeightTypeID as weightTypeID,
-        CONCAT(o.weight, ' ', wt.name) as weightTypeText,
-        o.productWeight,
-        CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
-        o.productQty,
-        o.pricePerQty,
-        o.totalPrice,
-        o.fOperationID,
-        ot.operationName,
-        o.fAssignUserID as fUserAssignID,
-        u.fullName as assignUser,
-        1 as isDelete,
-        o.productWeightTypeID,
-        o.totalWeight,
-        o.isActive,
-        o.status,
-        DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
-        -- Count how many times this order has been reassigned
-        (SELECT COUNT(*) FROM `order` o2 
-         WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)) as assignmentCount
-    FROM `order` o
-    LEFT JOIN client_master cm ON o.fClientID = cm.id
-    LEFT JOIN product p ON o.fProductID = p.id
-    LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
-    LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
-    LEFT JOIN operation_type ot ON o.fOperationID = ot.id
-    LEFT JOIN user u ON o.fAssignUserID = u.userID
-    WHERE o.isActive = 1
-    ORDER BY o.orderID DESC";
+    ROW_NUMBER() OVER (ORDER BY o.orderID DESC) as rowNumber,
+    o.orderID,
+    o.parentOrderID,
+    COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+    o.orderNo,
+    DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+    o.fClientID,
+    cm.clientName,
+    o.fProductID,
+    p.product_name as productName,
+    o.weight,
+    o.WeightTypeID as weightTypeID,
+    CONCAT(o.weight, ' ', wt.name) as weightTypeText,
+    o.productWeight,
+    CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
+    o.productQty,
+    o.pricePerQty,
+    o.totalPrice,
+    p.product_image,
+    o.description,
+    o.fOperationID,
+    ot.operationName,
+    o.fAssignUserID as fUserAssignID,
+    u.fullName as assignUser,
+    1 as isDelete,
+    o.productWeightTypeID,
+    o.totalWeight,
+    o.isActive,
+    o.status,
+    DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+    (
+        SELECT COUNT(*) FROM `order` o2 
+        WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)
+    ) as assignmentCount
+FROM `order` o
+LEFT JOIN client_master cm ON o.fClientID = cm.id
+LEFT JOIN product p ON o.fProductID = p.id
+LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
+LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
+LEFT JOIN operation_type ot ON o.fOperationID = ot.id
+LEFT JOIN user u ON o.fAssignUserID = u.userID
+WHERE o.orderID IN (
+    SELECT MAX(orderID)
+    FROM `order`
+    ";
+
+// 👇 Now inject condition *inside* subquery
+if (!$isAdmin && $userID) {
+    $userID = mysqli_real_escape_string($conn, $userID);
+    $query .= "WHERE fAssignUserID = '$userID' ";
+}
+
+$query .= "GROUP BY COALESCE(parentOrderID, orderID)
+)
+ORDER BY o.orderID DESC";
 
     $result = mysqli_query($conn, $query);
 
@@ -112,6 +260,8 @@ function getAllOrders()
 
     sendResponse('Records Get Successfully!', 200, 1, $orders);
 }
+
+
 
 function getOrderById($orderId)
 {
@@ -195,6 +345,9 @@ function getOrderHistory($orderId)
         cm.clientName,
         o.fAssignUserID as fUserAssignID,
         u.fullName as assignUser,
+        op.operationName as operationType,
+        o.remark,
+        o.description,
         o.status,
         o.isActive,
         DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
@@ -205,10 +358,39 @@ function getOrderHistory($orderId)
         END as assignmentStatus
     FROM `order` o
     LEFT JOIN client_master cm ON o.fClientID = cm.id
+    LEFT JOIN operation_type op ON o.fOperationID = op.id
     LEFT JOIN user u ON o.fAssignUserID = u.userID
     WHERE (o.orderID = '$orderId' OR COALESCE(o.parentOrderID, o.orderID) = 
            (SELECT COALESCE(parentOrderID, orderID) FROM `order` WHERE orderID = '$orderId' LIMIT 1))
     ORDER BY o.createdAt ASC";
+    // $query = "SELECT 
+    //     o.orderID,
+    //     o.parentOrderID,
+    //     COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+    //     o.orderNo,
+    //     DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+    //     o.fClientID,
+    //     cm.clientName,
+    //     o.fAssignUserID as fUserAssignID,
+    //     u.fullName as assignUser,
+    //     op.operationName as operationType,
+    //     o.remark,
+    //     o.description,
+    //     o.status,
+    //     o.isActive,
+    //     DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+    //     DATE_FORMAT(o.updatedAt, '%d-%b-%Y %H:%i') as updatedOn,
+    //     CASE 
+    //         WHEN o.isActive = 1 THEN 'Current'
+    //         ELSE 'Previous'
+    //     END as assignmentStatus
+    // FROM `order` o
+    // LEFT JOIN client_master cm ON o.fClientID = cm.id
+    // LEFT JOIN operation_type op ON o.fOperationID = op.id
+    // LEFT JOIN user u ON o.fAssignUserID = u.userID
+    // WHERE (o.orderID = '$orderId' OR COALESCE(o.parentOrderID, o.orderID) = 
+    //        (SELECT COALESCE(parentOrderID, orderID) FROM `order` WHERE orderID = '$orderId' LIMIT 1))
+    // ORDER BY o.createdAt ASC";
 
     $result = mysqli_query($conn, $query);
 
@@ -251,50 +433,68 @@ function updateOrder($orderId)
 
     // If user is being reassigned, create new order entry with proper parent tracking
     if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
-        
+
         // Mark current order as inactive and set updated timestamp
         $deactivate_query = "UPDATE `order` SET 
-            isActive = 0, 
             updatedAt = NOW(),
             remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')
             WHERE orderID = '$orderId'";
-        
+
         if (!mysqli_query($conn, $deactivate_query)) {
             sendResponse('Error deactivating current order: ' . mysqli_error($conn), 500, 0);
         }
 
         // Determine the original order ID (parent chain)
         $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
+        // $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
         $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
-        
+        $new_fOperationID = isset($input['operationType']) ? mysqli_real_escape_string($conn, $input['operationType']) : $current_order['operationType'];
+
+
         // Create new order with proper parent tracking
+        // $insert_query = "INSERT INTO `order` (
+        //     parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
+        //     orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
+        //     productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+        //     status, isActive, createdAt
+        // ) VALUES (
+        //     '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+        //     '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
+        //     '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
+        //     '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
+        //     '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
+        //     '{$current_order['totalWeight']}', 
+        //     '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
+        //     '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+        //     'Processing', 1, NOW()
+        // )";
         $insert_query = "INSERT INTO `order` (
-            parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
-            orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-            productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
-            status, isActive, createdAt
-        ) VALUES (
-            '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
-            '{$current_order['fProductID']}', '{$current_order['fOperationID']}', '$new_fAssignUserID',
-            '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
-            '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
-            '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
-            '{$current_order['totalWeight']}', 
-            '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous user]') . "',
-            '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
-            'Processing', 1, NOW()
-        )";
+    parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
+    orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
+    productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+    status, isActive, createdAt
+) VALUES (
+    '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+    '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
+    '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
+    '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
+    '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
+    '{$current_order['totalWeight']}', 
+    '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
+    '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+    'Processing', 1, NOW()
+)";
 
         if (mysqli_query($conn, $insert_query)) {
             $newOrderId = mysqli_insert_id($conn);
-            
+
             // Get user names for response
             $user_query = "SELECT 
                 (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
                 (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser";
             $user_result = mysqli_query($conn, $user_query);
             $users = mysqli_fetch_assoc($user_result);
-            
+
             sendResponse('Order reassigned successfully!', 200, 1, [
                 'newOrderID' => $newOrderId,
                 'originalOrderID' => $originalOrderID,
@@ -457,34 +657,73 @@ function createOrder()
     }
 }
 
+// function deleteOrder($orderId)
+// {
+//     global $conn;
+
+//     $orderId = mysqli_real_escape_string($conn, $orderId);
+
+//     // Check if order exists
+//     $check_query = "SELECT orderID, parentOrderID FROM `order` WHERE orderID = '$orderId'";
+//     $check_result = mysqli_query($conn, $check_query);
+
+//     if (mysqli_num_rows($check_result) == 0) {
+//         sendResponse('Order not found', 404, 0);
+//     }
+
+//     $order = mysqli_fetch_assoc($check_result);
+//     $originalOrderID = $order['parentOrderID'] ?? $order['orderID'];
+
+//     // Delete all versions of this order (including history)
+//     $query = "DELETE FROM `order` WHERE orderID = '$orderId' OR 
+//               COALESCE(parentOrderID, orderID) = '$originalOrderID'";
+
+//     if (mysqli_query($conn, $query)) {
+//         $deletedCount = mysqli_affected_rows($conn);
+//         sendResponse("Order and its history deleted successfully! ($deletedCount records deleted)", 200, 1);
+//     } else {
+//         sendResponse('Error deleting order: ' . mysqli_error($conn), 500, 0);
+//     }
+// }
 function deleteOrder($orderId)
 {
     global $conn;
-
     $orderId = mysqli_real_escape_string($conn, $orderId);
 
-    // Check if order exists
-    $check_query = "SELECT orderID, parentOrderID FROM `order` WHERE orderID = '$orderId'";
-    $check_result = mysqli_query($conn, $check_query);
-
-    if (mysqli_num_rows($check_result) == 0) {
+    // find the root (original) order
+    $rootQ  = "SELECT COALESCE(parentOrderID, orderID) AS rootID
+               FROM `order` WHERE orderID = '$orderId' LIMIT 1";
+    $rootRes = mysqli_query($conn, $rootQ);
+    if (mysqli_num_rows($rootRes) === 0) {
         sendResponse('Order not found', 404, 0);
     }
+    $rootID = mysqli_fetch_assoc($rootRes)['rootID'];
 
-    $order = mysqli_fetch_assoc($check_result);
-    $originalOrderID = $order['parentOrderID'] ?? $order['orderID'];
+    // delete in two steps inside a transaction
+    mysqli_begin_transaction($conn);
+    try {
+        // 1- delete children
+        mysqli_query(
+            $conn,
+            "DELETE FROM `order` WHERE parentOrderID = '$rootID'"
+        );
 
-    // Delete all versions of this order (including history)
-    $query = "DELETE FROM `order` WHERE orderID = '$orderId' OR 
-              COALESCE(parentOrderID, orderID) = '$originalOrderID'";
+        // 2- delete the parent
+        mysqli_query(
+            $conn,
+            "DELETE FROM `order` WHERE orderID = '$rootID'"
+        );
 
-    if (mysqli_query($conn, $query)) {
-        $deletedCount = mysqli_affected_rows($conn);
-        sendResponse("Order and its history deleted successfully! ($deletedCount records deleted)", 200, 1);
-    } else {
-        sendResponse('Error deleting order: ' . mysqli_error($conn), 500, 0);
+        $deleted = mysqli_affected_rows($conn);
+        mysqli_commit($conn);
+
+        sendResponse("Deleted $deleted rows (order + history)", 200, 1);
+    } catch (Throwable $e) {
+        mysqli_rollback($conn);
+        sendResponse('Error deleting order: ' . $e->getMessage(), 500, 0);
     }
 }
+
 
 function generateOrderNumber()
 {
