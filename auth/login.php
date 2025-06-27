@@ -49,7 +49,7 @@ class LoginAPI {
             $result = $stmt->get_result();
             
             if ($result->num_rows === 0) {
-                return $this->sendResponse("Invalid credentials", 401, 0, []);
+                return $this->sendResponse("Invalid credentials", 200, 0, []);
             }
             
             $user = $result->fetch_assoc();
@@ -58,7 +58,7 @@ class LoginAPI {
 
             // Verify password (assuming you're using password_hash())
             if ($password != $dbPassword) {
-                return $this->sendResponse("Invalid credentials wrong password", 401, 0, []);
+                return $this->sendResponse("Invalid credentials wrong password", 200, 0, []);
             }
             
             // Generate JWT token

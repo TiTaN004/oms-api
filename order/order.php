@@ -10,6 +10,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 require_once '../config.php';
+require_once '../notification/notification-service.php';
+
+$serviceAccountPath = '../push-notification-test-fd696-213a9048ade6.json';
+$notificationService = new FirebaseNotificationService($serviceAccountPath, $conn);
+
 date_default_timezone_set('Asia/Kolkata');
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -20,10 +25,9 @@ switch ($method) {
     case 'GET':
         if (empty($path_info)) {
             $userID = $_GET['userID'] ?? null;
-$isAdmin = $_GET['isAdmin'] ?? false;
+            $isAdmin = $_GET['isAdmin'] ?? false;
 
-getAllOrders($userID, $isAdmin);
-
+            getAllOrders($userID, $isAdmin);
         } elseif ($segments[0] === 'history' && isset($segments[1])) {
             getOrderHistory($segments[1]);
         } else {
@@ -237,13 +241,13 @@ WHERE o.orderID IN (
     FROM `order`
     ";
 
-// 👇 Now inject condition *inside* subquery
-if (!$isAdmin && $userID) {
-    $userID = mysqli_real_escape_string($conn, $userID);
-    $query .= "WHERE fAssignUserID = '$userID' ";
-}
+    // 👇 Now inject condition *inside* subquery
+    if (!$isAdmin && $userID) {
+        $userID = mysqli_real_escape_string($conn, $userID);
+        $query .= "WHERE fAssignUserID = '$userID' ";
+    }
 
-$query .= "GROUP BY COALESCE(parentOrderID, orderID)
+    $query .= "GROUP BY COALESCE(parentOrderID, orderID)
 )
 ORDER BY o.orderID DESC";
 
@@ -412,7 +416,7 @@ function getOrderHistory($orderId)
 
 function updateOrder($orderId)
 {
-    global $conn;
+    global $conn, $notificationService;
 
     $orderId = mysqli_real_escape_string($conn, $orderId);
     $input = json_decode(file_get_contents('php://input'), true);
@@ -473,17 +477,17 @@ function updateOrder($orderId)
     orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
     productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
     status, isActive, createdAt
-) VALUES (
-    '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
-    '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
-    '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
-    '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
-    '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
-    '{$current_order['totalWeight']}', 
-    '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
-    '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
-    'Processing', 1, NOW()
-)";
+    ) VALUES (
+        '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+        '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
+        '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
+        '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
+        '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
+        '{$current_order['totalWeight']}', 
+        '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
+        '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+        'Processing', 1, NOW()
+    )";
 
         if (mysqli_query($conn, $insert_query)) {
             $newOrderId = mysqli_insert_id($conn);
@@ -495,12 +499,25 @@ function updateOrder($orderId)
             $user_result = mysqli_query($conn, $user_query);
             $users = mysqli_fetch_assoc($user_result);
 
+            // ✅ Send notification
+            $result = $notificationService->sendNewOrderNotification(
+                $new_fAssignUserID,
+                $current_order["orderNo"],
+                [
+                    // 'client_name' => $current_order["clientName"],
+                    // 'product_name' => $current_order["productName"],
+                    // 'total_amount' => number_format($current_order["totalPrice"], 2),
+                    'order_id' => $newOrderId
+                ]
+            );
+
             sendResponse('Order reassigned successfully!', 200, 1, [
                 'newOrderID' => $newOrderId,
                 'originalOrderID' => $originalOrderID,
                 'previousUser' => $users['previousUser'],
                 'newUser' => $users['newUser'],
-                'reassignedAt' => date('d-M-Y H:i')
+                'reassignedAt' => date('d-M-Y H:i'),
+                'notification' => $result['message']
             ]);
         } else {
             sendResponse('Error reassigning order: ' . mysqli_error($conn), 500, 0);
@@ -601,7 +618,7 @@ function updateOrder($orderId)
 
 function createOrder()
 {
-    global $conn;
+    global $conn, $notificationService;
 
     $input = json_decode(file_get_contents('php://input'), true);
 
@@ -651,7 +668,35 @@ function createOrder()
 
     if (mysqli_query($conn, $query)) {
         $orderId = mysqli_insert_id($conn);
-        sendResponse('Order created successfully!', 200, 1, ['orderID' => $orderId]);
+        $extraQuery = "
+            SELECT 
+                (SELECT clientName FROM client_master WHERE id = '$fClientID') AS clientName,
+                (SELECT product_name FROM product WHERE id = '$fProductID') AS productName
+        ";
+        $extraResult = mysqli_query($conn, $extraQuery);
+        $extraData = mysqli_fetch_assoc($extraResult);
+
+        $clientName = $extraData['clientName'] ?? '';
+        $productName = $extraData['productName'] ?? '';
+
+        // ✅ Send notification
+        $result = $notificationService->sendNewOrderNotification(
+            $fAssignUserID,
+            $orderNo,
+            [
+                'client_name' => $clientName,
+                'product_name' => $productName,
+                'total_amount' => number_format($totalPrice, 2),
+                'order_id' => $orderId
+            ]
+        );
+
+        // if ($result['success']) {
+        //     echo "Notification sent successfully!";
+        // } else {
+        //     echo "Failed to send notification: " . $result['message'];
+        // }
+        sendResponse('Order created successfully!', 200, 1, ['orderID' => $orderId, "notification" => $result['message']]);
     } else {
         sendResponse('Error creating order: ' . mysqli_error($conn), 500, 0);
     }
