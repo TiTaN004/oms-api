@@ -117,6 +117,7 @@ function updateClient($conn, $input) {
                 'outVal' => 1,
                 'data' => [
                     'id' => $id,
+                    'clientID' => $id, 
                     'clientName' => $clientName,
                     'isActive' => (bool)$isActive
                 ]

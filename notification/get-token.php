@@ -18,17 +18,70 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // Include MySQLi connection
-require_once '../config.php'; // Make sure this defines $conn
+require_once '../config.php';
 
-// Get headers
-$headers = getallheaders();
-$userId = $headers['UserId'] ?? null;
-$authorization = $headers['Authorization'] ?? null;
+// Enhanced header retrieval function
+function getHeaderValue($name) {
+    // Try different methods to get headers
+    $headers = [];
+    
+    // Method 1: getallheaders()
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+    } else {
+        // Method 2: $_SERVER array
+        foreach ($_SERVER as $key => $value) {
+            if (strpos($key, 'HTTP_') === 0) {
+                $header = str_replace('HTTP_', '', $key);
+                $header = str_replace('_', '-', $header);
+                $header = strtolower($header);
+                $headers[$header] = $value;
+            }
+        }
+    }
+    
+    // Case-insensitive search
+    foreach ($headers as $key => $value) {
+        if (strcasecmp($key, $name) == 0) {
+            return $value;
+        }
+    }
+    
+    return null;
+}
+
+// Debug: Log all received headers
+error_log("=== FCM API Debug Info ===");
+error_log("Request Method: " . $_SERVER['REQUEST_METHOD']);
+error_log("All Headers: " . json_encode(getallheaders()));
+error_log("POST Data: " . file_get_contents('php://input'));
+
+// Get headers using enhanced function
+$userId = getHeaderValue('UserId');
+$authorization = getHeaderValue('Authorization');
+
+// Debug log
+error_log("Extracted UserId: " . ($userId ?? 'NULL'));
+error_log("Extracted Authorization: " . ($authorization ?? 'NULL'));
 
 // Validate required headers
 if (!$userId || !$authorization) {
+    $errorResponse = [
+        'success' => false, 
+        'message' => 'Missing required headers',
+        'debug' => [
+            'userId_received' => $userId ? 'yes' : 'no',
+            'authorization_received' => $authorization ? 'yes' : 'no',
+            'all_headers' => getallheaders(),
+            'server_info' => [
+                'REQUEST_METHOD' => $_SERVER['REQUEST_METHOD'],
+                'CONTENT_TYPE' => $_SERVER['CONTENT_TYPE'] ?? 'not set'
+            ]
+        ]
+    ];
+    
     http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Missing required headers']);
+    echo json_encode($errorResponse);
     exit();
 }
 
@@ -42,7 +95,15 @@ $authResult = mysqli_query($conn, $authQuery);
 
 if (!$authResult || mysqli_num_rows($authResult) === 0) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Invalid authorization']);
+    echo json_encode([
+        'success' => false, 
+        'message' => 'Invalid authorization',
+        'debug' => [
+            'userId' => $userId,
+            'query_executed' => $authQuery,
+            'rows_found' => mysqli_num_rows($authResult)
+        ]
+    ]);
     exit();
 }
 
@@ -65,36 +126,45 @@ if (empty($fcmToken)) {
     exit();
 }
 
-// $allowedPlatforms = ['android', 'ios'];
-// if (!in_array($platform, $allowedPlatforms)) {
-//     http_response_code(400);
-//     echo json_encode(['success' => false, 'message' => 'Invalid platform. Must be android or ios']);
-//     exit();
-// }
-
-// Start logic
+// Start transaction
 mysqli_begin_transaction($conn);
 
 try {
-    // Check if token exists
-    $checkQuery = "SELECT id FROM user_devices WHERE userID = '$userId' AND device_token = '$fcmToken'";
+    // Check if user already has a device record (regardless of token)
+    $checkQuery = "SELECT id, device_token FROM user_devices WHERE userID = '$userId'";
     $checkResult = mysqli_query($conn, $checkQuery);
     
     if ($checkResult && mysqli_num_rows($checkResult) > 0) {
+        // User exists - update their token
         $row = mysqli_fetch_assoc($checkResult);
         $deviceID = $row['id'];
-        $updateQuery = "UPDATE user_devices SET platform = '$platform', is_active = 1, updated_at = NOW() WHERE id = '$deviceID'";
+        $oldToken = $row['device_token'];
+        
+        $updateQuery = "UPDATE user_devices SET 
+                        device_token = '$fcmToken', 
+                        platform = '$platform', 
+                        is_active = 1, 
+                        updated_at = NOW() 
+                        WHERE userID = '$userId'";
         mysqli_query($conn, $updateQuery);
-        $message = 'FCM token updated successfully';
+        
+        $message = ($oldToken === $fcmToken) ? 
+                   'FCM token refreshed successfully' : 
+                   'FCM token updated successfully';
+                   
+        error_log("Updated FCM token for userID: $userId from '$oldToken' to '$fcmToken'");
     } else {
+        // User doesn't exist - insert new record
         $insertQuery = "INSERT INTO user_devices (userID, device_token, platform, is_active, updated_at) 
                         VALUES ('$userId', '$fcmToken', '$platform', 1, NOW())";
         mysqli_query($conn, $insertQuery);
         $message = 'FCM token registered successfully';
+        
+        error_log("Inserted new FCM token for userID: $userId with token: $fcmToken");
     }
-
+    
     mysqli_commit($conn);
-
+    
     echo json_encode([
         'success' => true,
         'message' => $message,
@@ -104,13 +174,14 @@ try {
             'token_registered' => true
         ]
     ]);
+    
 } catch (Exception $e) {
     mysqli_rollback($conn);
     http_response_code(500);
     echo json_encode([
         'success' => false,
         'message' => 'Failed to manage FCM token',
-        'error' => $e->getMessage() // remove in production
+        'error' => $e->getMessage()
     ]);
 }
 ?>
