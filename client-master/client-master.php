@@ -87,6 +87,7 @@ function createClient($conn, $input) {
             'outVal' => 1,
             'data' => [
                 'clientID' => $newId,
+                'id' => $newId,
                 'clientName' => $clientName,
                 'isActive' => (bool)$isActive
             ]
@@ -117,7 +118,6 @@ function updateClient($conn, $input) {
                 'outVal' => 1,
                 'data' => [
                     'id' => $id,
-                    'clientID' => $id, 
                     'clientName' => $clientName,
                     'isActive' => (bool)$isActive
                 ]
