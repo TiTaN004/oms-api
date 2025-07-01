@@ -97,11 +97,14 @@ function createOperationType($conn, $input) {
 }
 
 function updateOperationType($conn, $input) {
-    if (empty($input['id']) || empty($input['operationName'])) {
-        sendError('Operation type ID and name are required', 400);
-    }
 
-    $operationTypeID = intval($input['id']);
+    $operationTypeID = $input['operationTypeID'] ?? $input['id'] ?? null;
+$operationName = $input['operationName'] ?? null;
+
+    if (empty($operationTypeID) || empty($input['operationName'])) {
+        sendError('Operation type ID and name are required', 400);
+    };
+    // $operationTypeID = intval($input['id']) ?? intval($input['operationTypeID']);
     $operationName = $conn->real_escape_string($input['operationName']);
     $isActive = isset($input['isActive']) && $input['isActive'] ? 1 : 0;
 

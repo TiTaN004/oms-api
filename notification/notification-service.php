@@ -95,7 +95,7 @@ class FirebaseNotificationService
         $errors = [];
         $invalidTokens = [];
 
-        var_dump($tokens);
+        // var_dump($tokens);
 
         foreach ($tokens as $token) {
             try {

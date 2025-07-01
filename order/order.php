@@ -607,7 +607,67 @@ function updateOrder($orderId)
 
     if (mysqli_query($conn, $query)) {
         if (mysqli_affected_rows($conn) > 0) {
-            sendResponse('Order updated successfully!', 200, 1);
+             $updated_order_query = "SELECT 
+                o.*,
+                c.clientName as clientName,
+                p.product_name as productName,
+                u.userName as assignUserName,
+                op.operationName as operationName,
+                wt1.name as weightTypeName,
+                wt2.name as productWeightTypeName
+                FROM `order` o
+                LEFT JOIN client_master c ON o.fClientID = c.id
+                LEFT JOIN product p ON o.fProductID = p.id
+                LEFT JOIN user u ON o.fAssignUserID = u.userID
+                LEFT JOIN operation_type op ON o.fOperationID = op.id
+                LEFT JOIN weight_type wt1 ON o.WeightTypeID = wt1.id
+                LEFT JOIN weight_type wt2 ON o.productWeightTypeID = wt2.id
+                WHERE o.orderID = '$orderId' AND o.isActive = 1";
+            
+             $updated_result = mysqli_query($conn, $updated_order_query);
+            
+            if (!$updated_result) {
+                sendResponse('Error fetching updated order data: ' . mysqli_error($conn), 500, 0);
+                return;
+            }
+            
+            $updated_order_raw = mysqli_fetch_assoc($updated_result);
+            
+            if (!$updated_order_raw) {
+                sendResponse('Updated order data not found', 404, 0);
+                return;
+            }
+            // Format the updated order data
+            $updated_order_data = [
+                'orderID' => $updated_order_raw['orderID'],
+                'orderNo' => $updated_order_raw['orderNo'],
+                'clientName' => $updated_order_raw['clientName'],
+                'productName' => $updated_order_raw['productName'],
+                'assignUser' => $updated_order_raw['assignUserName'],
+                'operationName' => $updated_order_raw['operationName'],
+                'fClientID' => $updated_order_raw['fClientID'],
+                'fProductID' => $updated_order_raw['fProductID'],
+                'fOperationID' => $updated_order_raw['fOperationID'],
+                'fAssignUserID' => $updated_order_raw['fAssignUserID'],
+                'orderOn' => $updated_order_raw['orderOn'],
+                'weight' => (float)$updated_order_raw['weight'],
+                'weightTypeID' => $updated_order_raw['WeightTypeID'],
+                'productWeight' => (float)$updated_order_raw['productWeight'],
+                'productWeightTypeID' => $updated_order_raw['productWeightTypeID'],
+                'productQty' => (int)$updated_order_raw['productQty'],
+                'pricePerQty' => (float)$updated_order_raw['pricePerQty'],
+                'totalPrice' => (float)$updated_order_raw['totalPrice'],
+                'totalWeight' => (float)$updated_order_raw['totalWeight'],
+                'remark' => $updated_order_raw['remark'],
+                'description' => $updated_order_raw['description'],
+                'status' => $updated_order_raw['status'],
+                'isActive' => (bool)$updated_order_raw['isActive'],
+                'createdAt' => $updated_order_raw['createdAt'],
+                'updatedAt' => $updated_order_raw['updatedAt']
+            ];
+
+            sendResponse('Order updated successfully!', 200, 1, $updated_order_data);
+            // sendResponse('Order updated successfully!', 200, 1,$orderData);
         } else {
             sendResponse('No changes made to the order', 200, 1);
         }
@@ -671,13 +731,18 @@ function createOrder()
         $extraQuery = "
             SELECT 
                 (SELECT clientName FROM client_master WHERE id = '$fClientID') AS clientName,
-                (SELECT product_name FROM product WHERE id = '$fProductID') AS productName
+                (SELECT product_name FROM product WHERE id = '$fProductID') AS productName,
+                (SELECT userName FROM user WHERE userID = '$fAssignUserID') AS assignUserName,
+                (SELECT operationName FROM operation_type WHERE id = '$fOperationID') AS operationName
         ";
         $extraResult = mysqli_query($conn, $extraQuery);
         $extraData = mysqli_fetch_assoc($extraResult);
 
+
         $clientName = $extraData['clientName'] ?? '';
         $productName = $extraData['productName'] ?? '';
+        $assignUserName = $extraData['assignUserName'] ?? '';
+        $operationName = $extraData['operationName'] ?? '';
 
         // ✅ Send notification
         $result = $notificationService->sendNewOrderNotification(
@@ -696,7 +761,36 @@ function createOrder()
         // } else {
         //     echo "Failed to send notification: " . $result['message'];
         // }
-        sendResponse('Order created successfully!', 200, 1, ['orderID' => $orderId, "notification" => $result['message']]);
+
+        $orderData = [
+            'orderID' => $orderId,
+            'orderNo' => $orderNo,
+            'clientName' => $clientName,
+            'productName' => $productName,
+            'assignUser' => $assignUserName,
+            'operationName' => $operationName,
+            'fClientID' => $fClientID,
+            'fProductID' => $fProductID,
+            'fOperationID' => $fOperationID,
+            'fAssignUserID' => $fAssignUserID,
+            'orderOn' => $orderOn,
+            'weight' => $weight,
+            'weightTypeID' => $WeightTypeID,
+            'productWeight' => $productWeight,
+            'productWeightTypeID' => $productWeightTypeID,
+            'productQty' => (int)$productQty,
+            'pricePerQty' => (float)$pricePerQty,
+            'totalPrice' => (float)$totalPrice,
+            'totalWeight' => (float)$totalWeight,
+            'remark' => $remark,
+            'description' => $description,
+            'status' => 'Processing',
+            'isActive' => true,
+            'createdAt' => date('Y-m-d H:i:s')
+        ];
+
+        sendResponse('Order created successfully!', 200, 1, $orderData);
+        // sendResponse('Order created successfully!', 200, 1, ['order' => $orderData, "notification" => $result['message']]);
     } else {
         sendResponse('Error creating order: ' . mysqli_error($conn), 500, 0);
     }
@@ -762,7 +856,7 @@ function deleteOrder($orderId)
         $deleted = mysqli_affected_rows($conn);
         mysqli_commit($conn);
 
-        sendResponse("Deleted $deleted rows (order + history)", 200, 1);
+        sendResponse("Order Deleted successfully", 200, 1);
     } catch (Throwable $e) {
         mysqli_rollback($conn);
         sendResponse('Error deleting order: ' . $e->getMessage(), 500, 0);

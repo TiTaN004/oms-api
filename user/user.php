@@ -106,12 +106,13 @@ function createUser($conn, $input) {
             'fullName' => $input['fullName'],
             'userName' => $input['userName'],
             'operationTypeID' => $input['operationTypeID'],
+            'password' => $input['password'],
             'mobileNo' => $input['mobileNo'],
             'emailID' => $input['emailID'],
             'isActive' => (bool)$isActive
         ]);
     } else {
-        sendResponse('Failed to create user', 500, 0, null);
+        sendResponse('Failed to create user' . $stmt->error, 500, 0, null);
     }
 }
 
