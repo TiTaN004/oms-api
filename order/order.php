@@ -354,6 +354,12 @@ function getOrderHistory($orderId)
         o.description,
         o.status,
         o.isActive,
+        o.totalPrice as totalPrice,
+        CONCAT(o.weight, ' ', wt2.name) as totalWeight,
+        CONCAT(o.productWeight, ' ', wt1.name) as productWeight,
+        o.pricePerQty,
+        o.productQty, 
+        p.product_name as product,
         DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
         DATE_FORMAT(o.updatedAt, '%d-%b-%Y %H:%i') as updatedOn,
         CASE 
@@ -364,6 +370,9 @@ function getOrderHistory($orderId)
     LEFT JOIN client_master cm ON o.fClientID = cm.id
     LEFT JOIN operation_type op ON o.fOperationID = op.id
     LEFT JOIN user u ON o.fAssignUserID = u.userID
+    LEFT JOIN weight_type wt2 ON o.WeightTypeID = wt2.id
+    LEFT JOIN weight_type wt1 ON o.productWeightTypeID = wt1.id
+    LEFT JOIN product p ON o.fProductID = p.id
     WHERE (o.orderID = '$orderId' OR COALESCE(o.parentOrderID, o.orderID) = 
            (SELECT COALESCE(parentOrderID, orderID) FROM `order` WHERE orderID = '$orderId' LIMIT 1))
     ORDER BY o.createdAt ASC";
