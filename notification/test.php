@@ -2,7 +2,7 @@
 require_once '../config.php';
 require_once './notification-service.php';
 
-$serviceAccountPath = __DIR__ . './push-notification-test-fd696-213a9048ade6.json';
+$serviceAccountPath ='../push-notification-test-fd696-b3ddb2ece7a0.json';
 $notificationService = new FirebaseNotificationService($serviceAccountPath, $conn);
 
 $result = $notificationService->sendNewOrderNotification(

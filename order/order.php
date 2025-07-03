@@ -12,7 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 require_once '../config.php';
 require_once '../notification/notification-service.php';
 
-$serviceAccountPath = '../push-notification-test-fd696-213a9048ade6.json';
+$serviceAccountPath = '../push-notification-test-fd696-b3ddb2ece7a0.json';
 $notificationService = new FirebaseNotificationService($serviceAccountPath, $conn);
 
 date_default_timezone_set('Asia/Kolkata');
@@ -435,95 +435,304 @@ function updateOrder($orderId)
 
     $current_order = mysqli_fetch_assoc($check_result);
 
-    // If user is being reassigned, create new order entry with proper parent tracking
-    if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
+    // // If user is being reassigned, create new order entry with proper parent tracking
+    // if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
 
-        // Mark current order as inactive and set updated timestamp
-        $deactivate_query = "UPDATE `order` SET 
-            updatedAt = NOW(),
-            remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')
-            WHERE orderID = '$orderId'";
+    //     // Mark current order as inactive and set updated timestamp
+    //     $deactivate_query = "UPDATE `order` SET 
+    //         updatedAt = NOW(),
+    //         remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')
+    //         WHERE orderID = '$orderId'";
 
-        if (!mysqli_query($conn, $deactivate_query)) {
-            sendResponse('Error deactivating current order: ' . mysqli_error($conn), 500, 0);
-        }
+    //     if (!mysqli_query($conn, $deactivate_query)) {
+    //         sendResponse('Error deactivating current order: ' . mysqli_error($conn), 500, 0);
+    //     }
 
-        // Determine the original order ID (parent chain)
-        $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
-        // $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
-        $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
-        $new_fOperationID = isset($input['operationType']) ? mysqli_real_escape_string($conn, $input['operationType']) : $current_order['operationType'];
+    //     // Determine the original order ID (parent chain)
+    //     $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
+    //     // $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
+    //     $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
+    //     $new_fOperationID = isset($input['operationType']) ? mysqli_real_escape_string($conn, $input['operationType']) : $current_order['operationType'];
 
 
-        // Create new order with proper parent tracking
-        // $insert_query = "INSERT INTO `order` (
-        //     parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
-        //     orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-        //     productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
-        //     status, isActive, createdAt
-        // ) VALUES (
-        //     '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
-        //     '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
-        //     '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
-        //     '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
-        //     '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
-        //     '{$current_order['totalWeight']}', 
-        //     '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
-        //     '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
-        //     'Processing', 1, NOW()
-        // )";
-        $insert_query = "INSERT INTO `order` (
-    parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
-    orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
-    productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
-    status, isActive, createdAt
+    //     // Create new order with proper parent tracking
+    //     // $insert_query = "INSERT INTO `order` (
+    //     //     parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
+    //     //     orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
+    //     //     productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+    //     //     status, isActive, createdAt
+    //     // ) VALUES (
+    //     //     '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+    //     //     '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
+    //     //     '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
+    //     //     '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
+    //     //     '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
+    //     //     '{$current_order['totalWeight']}', 
+    //     //     '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
+    //     //     '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+    //     //     'Processing', 1, NOW()
+    //     // )";
+    //     $insert_query = "INSERT INTO `order` (
+    // parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
+    // orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
+    // productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+    // status, isActive, createdAt
+    // ) VALUES (
+    //     '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
+    //     '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
+    //     '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
+    //     '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
+    //     '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
+    //     '{$current_order['totalWeight']}', 
+    //     '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
+    //     '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
+    //     'Processing', 1, NOW()
+    // )";
+
+    //     if (mysqli_query($conn, $insert_query)) {
+    //         $newOrderId = mysqli_insert_id($conn);
+
+    //         // Get user names for response
+    //         $user_query = "SELECT 
+    //             (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
+    //             (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser";
+    //         $user_result = mysqli_query($conn, $user_query);
+    //         $users = mysqli_fetch_assoc($user_result);
+
+    //         // ✅ Send notification
+    //         $result = $notificationService->sendNewOrderNotification(
+    //             $new_fAssignUserID,
+    //             $current_order["orderNo"],
+    //             [
+    //                 // 'client_name' => $current_order["clientName"],
+    //                 // 'product_name' => $current_order["productName"],
+    //                 // 'total_amount' => number_format($current_order["totalPrice"], 2),
+    //                 'order_id' => $newOrderId
+    //             ]
+    //         );
+
+    //         sendResponse('Order reassigned successfully!', 200, 1, [
+    //             'newOrderID' => $newOrderId,
+    //             'originalOrderID' => $originalOrderID,
+    //             'previousUser' => $users['previousUser'],
+    //             'newUser' => $users['newUser'],
+    //             'reassignedAt' => date('d-M-Y H:i'),
+    //             'notification' => $result['message']
+    //         ]);
+    //     } else {
+    //         sendResponse('Error reassigning order: ' . mysqli_error($conn), 500, 0);
+    //     }
+    //     return;
+    // }
+
+    // If user is being reassigned, handle both original order update AND create new reassigned order
+if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
+
+    // ✅ STEP 1: UPDATE ORIGINAL ORDER with all requested changes (except user assignment)
+    $update_original_fields = [];
+    $update_original_fields[] = "updatedAt = NOW()";
+    $update_original_fields[] = "remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')";
+    
+    // Apply all field updates to original order
+    if (isset($input['fClientID'])) {
+        $fClientID = mysqli_real_escape_string($conn, $input['fClientID']);
+        $update_original_fields[] = "fClientID = '$fClientID'";
+    }
+    if (isset($input['fProductID'])) {
+        $fProductID = mysqli_real_escape_string($conn, $input['fProductID']);
+        $update_original_fields[] = "fProductID = '$fProductID'";
+    }
+    if (isset($input['weight'])) {
+        $weight = mysqli_real_escape_string($conn, $input['weight']);
+        $update_original_fields[] = "weight = '$weight'";
+    }
+    if (isset($input['WeightTypeID'])) {
+        $WeightTypeID = mysqli_real_escape_string($conn, $input['WeightTypeID']);
+        $update_original_fields[] = "WeightTypeID = '$WeightTypeID'";
+    }
+    if (isset($input['productWeight'])) {
+        $productWeight = mysqli_real_escape_string($conn, $input['productWeight']);
+        $update_original_fields[] = "productWeight = '$productWeight'";
+    }
+    if (isset($input['productWeightTypeID'])) {
+        $productWeightTypeID = mysqli_real_escape_string($conn, $input['productWeightTypeID']);
+        $update_original_fields[] = "productWeightTypeID = '$productWeightTypeID'";
+    }
+    if (isset($input['productQty'])) {
+        $productQty = mysqli_real_escape_string($conn, $input['productQty']);
+        $update_original_fields[] = "productQty = '$productQty'";
+    }
+    if (isset($input['pricePerQty'])) {
+        $pricePerQty = mysqli_real_escape_string($conn, $input['pricePerQty']);
+        $update_original_fields[] = "pricePerQty = '$pricePerQty'";
+    }
+    if (isset($input['description'])) {
+        $description = mysqli_real_escape_string($conn, $input['description']);
+        $update_original_fields[] = "description = '$description'";
+    }
+    // ✅ IMPORTANT: Apply status update to ORIGINAL order
+    if (isset($input['status'])) {
+        $status = (int)$input['status'] === 1 ? 'Completed' : 'Processing';
+        $update_original_fields[] = "status = '$status'";
+    }
+    // ✅ IMPORTANT: Apply operation type update to ORIGINAL order  
+    if (isset($input['fOperationID'])) {
+        $fOperationID = mysqli_real_escape_string($conn, $input['fOperationID']);
+        $update_original_fields[] = "fOperationID = '$fOperationID'";
+    }
+    
+    // Recalculate totals for original order if needed
+    if (isset($input['productQty']) || isset($input['pricePerQty'])) {
+        $qty = isset($input['productQty']) ? $input['productQty'] : $current_order['productQty'];
+        $price = isset($input['pricePerQty']) ? $input['pricePerQty'] : $current_order['pricePerQty'];
+        $totalPrice = floatval($qty) * floatval($price);
+        $update_original_fields[] = "totalPrice = '$totalPrice'";
+    }
+    
+    if (isset($input['weight']) || isset($input['productWeight'])) {
+        $weight = isset($input['weight']) ? $input['weight'] : $current_order['weight'];
+        $productWeight = isset($input['productWeight']) ? $input['productWeight'] : $current_order['productWeight'];
+        $totalWeight = floatval($weight) + floatval($productWeight);
+        $update_original_fields[] = "totalWeight = '$totalWeight'";
+    }
+
+    // Execute original order update
+    $update_original_query = "UPDATE `order` SET " . implode(', ', $update_original_fields) . " WHERE orderID = '$orderId'";
+    
+    if (!mysqli_query($conn, $update_original_query)) {
+        sendResponse('Error updating original order: ' . mysqli_error($conn), 500, 0);
+    }
+
+    // ✅ STEP 2: CREATE NEW REASSIGNED ORDER with NEW operation type and NEW user
+    
+    // Get UPDATED values from original order (after our update)
+    $updated_order_query = "SELECT * FROM `order` WHERE orderID = '$orderId'";
+    $updated_order_result = mysqli_query($conn, $updated_order_query);
+    $updated_order = mysqli_fetch_assoc($updated_order_result);
+    
+    // Determine the original order ID (parent chain)
+    $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
+    $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
+    
+    // ✅ For NEW order: Use the UPDATED operation type from request (for reassignment)
+    $new_fOperationID = isset($input['operationType']) ? mysqli_real_escape_string($conn, $input['operationType']) : $updated_order['operationType'];
+
+    // Create new reassigned order with updated values
+    $insert_query = "INSERT INTO `order` (
+        parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
+        orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
+        productQty, pricePerQty, totalPrice, totalWeight, remark, description, 
+        status, isActive, createdAt
     ) VALUES (
-        '$originalOrderID', '{$current_order['orderNo']}', '{$current_order['fClientID']}', 
-        '{$current_order['fProductID']}', '$new_fOperationID', '$new_fAssignUserID',
-        '{$current_order['orderOn']}', '{$current_order['weight']}', '{$current_order['WeightTypeID']}', 
-        '{$current_order['productWeight']}', '{$current_order['productWeightTypeID']}',
-        '{$current_order['productQty']}', '{$current_order['pricePerQty']}', '{$current_order['totalPrice']}', 
-        '{$current_order['totalWeight']}', 
-        '" . mysqli_real_escape_string($conn, ($input['remark'] ?? '') . ' [Reassigned from previous by admin]') . "',
-        '" . mysqli_real_escape_string($conn, $input['description'] ?? $current_order['description']) . "', 
-        'Processing', 1, NOW()
+        '$originalOrderID', 
+        '{$updated_order['orderNo']}', 
+        '{$updated_order['fClientID']}', 
+        '{$updated_order['fProductID']}', 
+        '$new_fOperationID', 
+        '$new_fAssignUserID',
+        '{$updated_order['orderOn']}', 
+        '{$updated_order['weight']}', 
+        '{$updated_order['WeightTypeID']}', 
+        '{$updated_order['productWeight']}', 
+        '{$updated_order['productWeightTypeID']}',
+        '{$updated_order['productQty']}', 
+        '{$updated_order['pricePerQty']}', 
+        '{$updated_order['totalPrice']}', 
+        '{$updated_order['totalWeight']}', 
+        'Reassigned from order {$orderId}',
+        '{$updated_order['description']}', 
+        'Processing', 
+        1, 
+        NOW()
     )";
 
-        if (mysqli_query($conn, $insert_query)) {
-            $newOrderId = mysqli_insert_id($conn);
+    if (mysqli_query($conn, $insert_query)) {
+        $newOrderId = mysqli_insert_id($conn);
 
-            // Get user names for response
-            $user_query = "SELECT 
-                (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
-                (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser";
-            $user_result = mysqli_query($conn, $user_query);
-            $users = mysqli_fetch_assoc($user_result);
+        // Get user names and operation names for response
+        $info_query = "SELECT 
+            (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
+            (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser,
+            (SELECT operationName FROM operation_type WHERE id = '{$current_order['fOperationID']}') as previousOperation,
+            (SELECT operationName FROM operation_type WHERE id = '$new_fOperationID') as newOperation";
+        $info_result = mysqli_query($conn, $info_query);
+        $info = mysqli_fetch_assoc($info_result);
 
-            // ✅ Send notification
-            $result = $notificationService->sendNewOrderNotification(
-                $new_fAssignUserID,
-                $current_order["orderNo"],
-                [
-                    // 'client_name' => $current_order["clientName"],
-                    // 'product_name' => $current_order["productName"],
-                    // 'total_amount' => number_format($current_order["totalPrice"], 2),
-                    'order_id' => $newOrderId
-                ]
-            );
+        // ✅ Send notification to NEW user
+        $result = $notificationService->sendNewOrderNotification(
+            $new_fAssignUserID,
+            $updated_order["orderNo"],
+            [
+                'order_id' => $newOrderId
+            ]
+        );
 
-            sendResponse('Order reassigned successfully!', 200, 1, [
-                'newOrderID' => $newOrderId,
-                'originalOrderID' => $originalOrderID,
-                'previousUser' => $users['previousUser'],
-                'newUser' => $users['newUser'],
-                'reassignedAt' => date('d-M-Y H:i'),
-                'notification' => $result['message']
-            ]);
-        } else {
-            sendResponse('Error reassigning order: ' . mysqli_error($conn), 500, 0);
-        }
-        return;
+        $updated_order_query = "SELECT 
+                o.*,
+                c.clientName as clientName,
+                p.product_name as productName,
+                u.userName as assignUserName,
+                op.operationName as operationName,
+                wt1.name as weightTypeName,
+                wt2.name as productWeightTypeName
+                FROM `order` o
+                LEFT JOIN client_master c ON o.fClientID = c.id
+                LEFT JOIN product p ON o.fProductID = p.id
+                LEFT JOIN user u ON o.fAssignUserID = u.userID
+                LEFT JOIN operation_type op ON o.fOperationID = op.id
+                LEFT JOIN weight_type wt1 ON o.WeightTypeID = wt1.id
+                LEFT JOIN weight_type wt2 ON o.productWeightTypeID = wt2.id
+                WHERE o.orderID = '$newOrderId' AND o.isActive = 1";
+            
+             $updated_result = mysqli_query($conn, $updated_order_query);
+            
+            if (!$updated_result) {
+                sendResponse('Error fetching updated order data: ' . mysqli_error($conn), 500, 0);
+                return;
+            }
+            
+            $updated_order_raw = mysqli_fetch_assoc($updated_result);
+            
+            if (!$updated_order_raw) {
+                sendResponse('Updated order data not found', 404, 0);
+                return;
+            }
+            // Format the updated order data
+            $updated_order_data = [
+                'orderID' => $updated_order_raw['orderID'],
+                'orderNo' => $updated_order_raw['orderNo'],
+                'clientName' => $updated_order_raw['clientName'],
+                'productName' => $updated_order_raw['productName'],
+                'assignUser' => $updated_order_raw['assignUserName'],
+                'operationName' => $updated_order_raw['operationName'],
+                'fClientID' => $updated_order_raw['fClientID'],
+                'fProductID' => $updated_order_raw['fProductID'],
+                'fOperationID' => $updated_order_raw['fOperationID'],
+                'fAssignUserID' => $updated_order_raw['fAssignUserID'],
+                'orderOn' => $updated_order_raw['orderOn'],
+                'weight' => (float)$updated_order_raw['weight'],
+                'weightTypeID' => $updated_order_raw['WeightTypeID'],
+                'productWeight' => (float)$updated_order_raw['productWeight'],
+                'productWeightTypeID' => $updated_order_raw['productWeightTypeID'],
+                'productQty' => (int)$updated_order_raw['productQty'],
+                'pricePerQty' => (float)$updated_order_raw['pricePerQty'],
+                'totalPrice' => (float)$updated_order_raw['totalPrice'],
+                'totalWeight' => (float)$updated_order_raw['totalWeight'],
+                'remark' => $updated_order_raw['remark'],
+                'description' => $updated_order_raw['description'],
+                'status' => $updated_order_raw['status'],
+                'isActive' => (bool)$updated_order_raw['isActive'],
+                'createdAt' => $updated_order_raw['createdAt'],
+                'updatedAt' => $updated_order_raw['updatedAt']
+            ];
+
+
+        sendResponse('Order updated and reassigned successfully!', 200, 1, $updated_order_data);
+    } else {
+        sendResponse('Error creating reassigned order: ' . mysqli_error($conn), 500, 0);
     }
+    return;
+}
 
     // Regular update for other fields (same as before)
     $update_fields = [];

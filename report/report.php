@@ -15,7 +15,7 @@ $request = $_SERVER['REQUEST_URI'];
 $path = parse_url($request, PHP_URL_PATH);
 $pathParts = explode('/', trim($path, '/'));
 
-switch($method) {
+switch ($method) {
     case 'GET':
         handleGetRequest($pathParts, $conn);
         break;
@@ -28,9 +28,10 @@ switch($method) {
         break;
 }
 
-function handleGetRequest($pathParts, $conn) {
+function handleGetRequest($pathParts, $conn)
+{
     $endpoint = end($pathParts);
-    switch($endpoint) {
+    switch ($endpoint) {
         case 'reports':
             getReports($conn);
             break;
@@ -44,9 +45,10 @@ function handleGetRequest($pathParts, $conn) {
     }
 }
 
-function handlePostRequest($pathParts, $conn) {
+function handlePostRequest($pathParts, $conn)
+{
     $endpoint = end($pathParts);
-    switch($endpoint) {
+    switch ($endpoint) {
         case 'reports':
             getFilteredReports($conn);
             break;
@@ -57,7 +59,8 @@ function handlePostRequest($pathParts, $conn) {
     }
 }
 
-function getFilterOptions($conn) {
+function getFilterOptions($conn)
+{
     try {
         $result = [];
 
@@ -73,13 +76,14 @@ function getFilterOptions($conn) {
         ];
 
         echo json_encode($result);
-    } catch(Exception $e) {
+    } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to fetch filter options: ' . $e->getMessage()]);
     }
 }
 
-function fetchAllAssoc($conn, $sql) {
+function fetchAllAssoc($conn, $sql)
+{
     $res = mysqli_query($conn, $sql);
     $data = [];
     while ($row = mysqli_fetch_assoc($res)) {
@@ -88,7 +92,8 @@ function fetchAllAssoc($conn, $sql) {
     return $data;
 }
 
-function getReports($conn) {
+function getReports($conn)
+{
     $sql = "SELECT 
                 o.orderID, o.orderNo, DATE_FORMAT(o.orderOn, '%d-%M-%Y') as orderDate,
                 cm.clientName, u.fullName as assignedTo, p.product_name as product,
@@ -120,7 +125,8 @@ function getReports($conn) {
     ]);
 }
 
-function getFilteredReports($conn) {
+function getFilteredReports($conn)
+{
     $input = json_decode(file_get_contents('php://input'), true);
 
     $sql = "SELECT 
@@ -128,6 +134,7 @@ function getFilteredReports($conn) {
                 cm.clientName, u.fullName as assignedTo, p.product_name as product,
                 CONCAT(o.productWeight, ' ', wt1.name) as productWeight,
                 CONCAT(o.weight, ' ', wt2.name) as totalWeight,
+                o.weight,
                 o.productQty, o.pricePerQty, o.totalPrice, o.status,
                 ot.operationName as operationType
             FROM `order` o
@@ -141,31 +148,87 @@ function getFilteredReports($conn) {
 
     $conditions = [];
 
+    // Add conditions based on input
+    $clientId        = $input['clientId']        ?? $input['fClientID']        ?? null;
+    $productId       = $input['productId']       ?? $input['fProductID']       ?? null;
+    $operationTypeId = $input['operationTypeId'] ?? $input['fOperationID']     ?? null;
+    $assignedUserId  = $input['assignedUserId']  ?? $input['fUserAssignID']    ?? null;
+    // $status          = $input['status']          ?? null;
+    $statusRaw = $input['status'] ?? null;
+
+if (is_numeric($statusRaw)) {
+    if ($statusRaw == 2) {
+        $status = 'Processing';
+    } elseif ($statusRaw == 1) {
+        $status = 'Completed';
+    } else {
+        $status = null; // unknown numeric, ignore
+    }
+} elseif (!empty($statusRaw)) {
+    $status = mysqli_real_escape_string($conn, $statusRaw);
+} else {
+    $status = null;
+}
+    $search          = $input['search']          ?? $input['searchText']       ?? null;
+
+    // Date range
     if (!empty($input['fromDate'])) {
         $conditions[] = "DATE(o.orderOn) >= '" . mysqli_real_escape_string($conn, $input['fromDate']) . "'";
     }
     if (!empty($input['toDate'])) {
         $conditions[] = "DATE(o.orderOn) <= '" . mysqli_real_escape_string($conn, $input['toDate']) . "'";
     }
-    if (!empty($input['clientId'])) {
-        $conditions[] = "o.fClientID = " . intval($input['clientId']);
+
+    // Filters (ignore 0 if not meaningful in your app)
+    if (!empty($clientId)) {
+        $conditions[] = "o.fClientID = " . intval($clientId);
     }
-    if (!empty($input['productId'])) {
-        $conditions[] = "o.fProductID = " . intval($input['productId']);
+    if (!empty($productId)) {
+        $conditions[] = "o.fProductID = " . intval($productId);
     }
-    if (!empty($input['operationTypeId'])) {
-        $conditions[] = "o.fOperationID = " . intval($input['operationTypeId']);
+    if (!empty($operationTypeId)) {
+        $conditions[] = "o.fOperationID = " . intval($operationTypeId);
     }
-    if (!empty($input['assignedUserId'])) {
-        $conditions[] = "o.fAssignUserID = " . intval($input['assignedUserId']);
+    if (!empty($assignedUserId)) {
+        $conditions[] = "o.fAssignUserID = " . intval($assignedUserId);
     }
-    if (!empty($input['status'])) {
-        $conditions[] = "o.status = '" . mysqli_real_escape_string($conn, $input['status']) . "'";
+
+    // Special case: if `status` is numeric 0, skip filtering
+    if (!empty($status) || $status === "Pending" || $status === "Completed") {
+        $conditions[] = "o.status = '" . mysqli_real_escape_string($conn, $status) . "'";
     }
-    if (!empty($input['search'])) {
-        $search = mysqli_real_escape_string($conn, $input['search']);
-        $conditions[] = "(cm.clientName LIKE '%$search%' OR p.product_name LIKE '%$search%' OR o.orderNo LIKE '%$search%' OR u.fullName LIKE '%$search%')";
+
+    // Search text
+    if (!empty($search)) {
+        $searchEscaped = mysqli_real_escape_string($conn, $search);
+        $conditions[] = "(cm.clientName LIKE '%$searchEscaped%' OR p.product_name LIKE '%$searchEscaped%' OR o.orderNo LIKE '%$searchEscaped%' OR u.fullName LIKE '%$searchEscaped%')";
     }
+
+    // if (!empty($input['fromDate'])) {
+    //     $conditions[] = "DATE(o.orderOn) >= '" . mysqli_real_escape_string($conn, $input['fromDate']) . "'";
+    // }
+    // if (!empty($input['toDate'])) {
+    //     $conditions[] = "DATE(o.orderOn) <= '" . mysqli_real_escape_string($conn, $input['toDate']) . "'";
+    // }
+    // if (!empty($input['clientId'])) {
+    //     $conditions[] = "o.fClientID = " . intval($input['clientId']);
+    // }
+    // if (!empty($input['productId'])) {
+    //     $conditions[] = "o.fProductID = " . intval($input['productId']);
+    // }
+    // if (!empty($input['operationTypeId'])) {
+    //     $conditions[] = "o.fOperationID = " . intval($input['operationTypeId']);
+    // }
+    // if (!empty($input['assignedUserId'])) {
+    //     $conditions[] = "o.fAssignUserID = " . intval($input['assignedUserId']);
+    // }
+    // if (!empty($input['status'])) {
+    //     $conditions[] = "o.status = '" . mysqli_real_escape_string($conn, $input['status']) . "'";
+    // }
+    // if (!empty($input['search'])) {
+    //     $search = mysqli_real_escape_string($conn, $input['search']);
+    //     $conditions[] = "(cm.clientName LIKE '%$search%' OR p.product_name LIKE '%$search%' OR o.orderNo LIKE '%$search%' OR u.fullName LIKE '%$search%')";
+    // }
 
     if (!empty($conditions)) {
         $sql .= " AND " . implode(" AND ", $conditions);
@@ -197,7 +260,8 @@ function getFilteredReports($conn) {
     ]);
 }
 
-function calculateSummaryStats($reports) {
+function calculateSummaryStats($reports)
+{
     $stats = [
         'totalOrders' => count($reports),
         'totalAmount' => 0,
@@ -220,5 +284,3 @@ function calculateSummaryStats($reports) {
 
     return $stats;
 }
-
-?>

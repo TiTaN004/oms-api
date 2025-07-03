@@ -12,6 +12,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
+require_once '../notification/notification-service.php';
+
+$serviceAccountPath = '../push-notification-test-fd696-b3ddb2ece7a0.json';
+$notificationService = new FirebaseNotificationService($serviceAccountPath, $conn);
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $path_parts = explode('/', trim($path, '/'));
@@ -150,13 +155,81 @@ function getCastingOrder($conn, $id) {
     }
 }
 
+// function createCastingOrder($conn) {
+//     global $notificationService;
+
+//     $input = json_decode(file_get_contents('php://input'), true);
+//     $required_fields = ['client_id', 'user_id', 'product_id', 'qty', 'size'];
+//     foreach ($required_fields as $field) {
+//         if (empty($input[$field])) {
+//             http_response_code(400);
+//             echo json_encode(['error' => "Field '$field' is required", 'message' => "Field '$field' is required"]);
+//             return;
+//         }
+//     }
+
+//     $status = $input['status'] ?? 'pending';
+//     $status = $status === 'pending' ? 'Processing' : ($status === 'completed' ? 'Completed' : $status);
+//     $operation_id = $input['operation_id'] ?? getDefaultOperationType($conn);
+//     $orderDate = !empty($input['order_date']) ? $input['order_date'] : date('Y-m-d H:i:s');
+//     $stmt = $conn->prepare("INSERT INTO casting_order (fClientID, fProductID, fAssignUserID, fOperationID, quantity, size, order_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+//     $stmt->bind_param(
+//         'iiiissss',
+//         $input['client_id'],
+//         $input['product_id'],
+//         $input['user_id'],
+//         $operation_id,
+//         $input['qty'],
+//         $input['size'],
+//         $orderDate,
+//         $status
+//     );
+//     $stmt->execute();
+    
+//     // if($stmt->affected_rows > 1){
+//     //     //fetch last inserted user id
+//     //     $id = $conn->insert_id;
+//     //     $sql = "select fAssignUserID from casting_order where CastingOrderId = $id";
+//     //     $result = $conn->query($sql);
+//     //     $userID = $result->fetch_assoc()['fAssignUserID'];
+
+//     //      $result = $notificationService->sendNewOrderNotification(
+//     //         $userID,
+//     //         $id,
+//     //         [
+//     //             'order_id' => $id
+//     //         ]
+//     //     );
+//     // }
+
+//     echo json_encode([
+//         'message' => 'Order created successfully',
+//         'success' => true,
+//         'statusCode' => 200,
+//         'outVal' => 1,
+//         'notification' => isset($result) ? $result : null,
+//         'data' => [
+//             'client_id' => $input['client_id'],
+//             'user_id' => $input['user_id'],
+//             'product_id' => $input['product_id'],
+//             'qty' => $input['qty'],
+//             'size' => $input['size'],
+//             'status' => $status,
+//             'operation_id' => $operation_id
+//         ],
+//         'id' => $conn->insert_id
+//     ]);
+// }
+
 function createCastingOrder($conn) {
+    global $notificationService;
+
     $input = json_decode(file_get_contents('php://input'), true);
-    $required_fields = ['client_id', 'user_id', 'product_id', 'qty', 'size', 'order_date'];
+    $required_fields = ['client_id', 'user_id', 'product_id', 'qty', 'size'];
     foreach ($required_fields as $field) {
         if (empty($input[$field])) {
             http_response_code(400);
-            echo json_encode(['error' => "Field '$field' is required"]);
+            echo json_encode(['error' => "Field '$field' is required", 'message' => "Field '$field' is required"]);
             return;
         }
     }
@@ -164,7 +237,8 @@ function createCastingOrder($conn) {
     $status = $input['status'] ?? 'pending';
     $status = $status === 'pending' ? 'Processing' : ($status === 'completed' ? 'Completed' : $status);
     $operation_id = $input['operation_id'] ?? getDefaultOperationType($conn);
-
+    $orderDate = !empty($input['order_date']) ? $input['order_date'] : date('Y-m-d H:i:s');
+    
     $stmt = $conn->prepare("INSERT INTO casting_order (fClientID, fProductID, fAssignUserID, fOperationID, quantity, size, order_date, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
     $stmt->bind_param(
         'iiiissss',
@@ -174,14 +248,46 @@ function createCastingOrder($conn) {
         $operation_id,
         $input['qty'],
         $input['size'],
-        $input['order_date'],
+        $orderDate,
         $status
     );
     $stmt->execute();
+    
+    // Fixed condition: Check if exactly 1 row was affected (successful single insert)
+    if($stmt->affected_rows == 1) {
+        // Fetch last inserted order id
+        $id = $conn->insert_id;
+        $sql = "SELECT fAssignUserID FROM casting_order WHERE CastingOrderId = ?";
+        $stmt2 = $conn->prepare($sql);
+        $stmt2->bind_param('i', $id);
+        $stmt2->execute();
+        $result_query = $stmt2->get_result();
+        $userID = $result_query->fetch_assoc()['fAssignUserID'];
+
+        $result = $notificationService->sendNewOrderNotification(
+            $userID,
+            $id,
+            [
+                'order_id' => $id
+            ]
+        );
+    }
 
     echo json_encode([
-        'success' => true,
         'message' => 'Order created successfully',
+        'success' => true,
+        'statusCode' => 200,
+        'outVal' => 1,
+        'notification' => isset($result) ? $result : null,
+        'data' => [
+            'client_id' => $input['client_id'],
+            'user_id' => $input['user_id'],
+            'product_id' => $input['product_id'],
+            'qty' => $input['qty'],
+            'size' => $input['size'],
+            'status' => $status,
+            'operation_id' => $operation_id
+        ],
         'id' => $conn->insert_id
     ]);
 }
@@ -202,21 +308,36 @@ function updateCastingOrder($conn, $id) {
     $status = $input['status'] ?? 'pending';
     $status = $status === 'pending' ? 'Processing' : ($status === 'completed' ? 'Completed' : $status);
 
-    $stmt = $conn->prepare("UPDATE casting_order SET fClientID=?, fProductID=?, fAssignUserID=?, quantity=?, size=?, order_date=?, status=? WHERE CastingOrderId=?");
+    $stmt = $conn->prepare("UPDATE casting_order SET fClientID=?, fProductID=?, fAssignUserID=?, quantity=?, size=?, status=? WHERE CastingOrderId=?");
     $stmt->bind_param(
-        'iiiisssi',
+        'iiiissi',
         $input['client_id'],
         $input['product_id'],
         $input['user_id'],
         $input['qty'],
         $input['size'],
-        $input['order_date'],
         $status,
         $id
     );
     $stmt->execute();
 
-    echo json_encode(['success' => true, 'message' => 'Order updated successfully']);
+    if ($stmt->affected_rows === 0) {
+        http_response_code(400);
+        echo json_encode(['statusCode' => 200,'outVal' => 1 ,'message' => 'No changes made or order not found']);
+        return;
+    }
+
+    $data = [
+        'id' => $id,
+        'client_id' => $input['client_id'],
+        'user_id' => $input['user_id'],
+        'product_id' => $input['product_id'],
+        'qty' => $input['qty'],
+        'size' => $input['size'],
+        'status' => $status
+    ];
+
+    echo json_encode(['success' => true, 'message' => 'Order updated successfully', 'statusCode' => 200, 'outVal' => 1,'data' => $data]);
 }
 
 function deleteCastingOrder($conn, $id) {
@@ -234,7 +355,7 @@ function deleteCastingOrder($conn, $id) {
     $stmt->bind_param('i', $id);
     $stmt->execute();
 
-    echo json_encode(['success' => true, 'message' => 'Order deleted successfully']);
+    echo json_encode(['success' => true, 'message' => 'Order deleted successfully', 'statusCode' => 200, 'outVal' => 1]);
 }
 
 function getDefaultOperationType($conn) {
