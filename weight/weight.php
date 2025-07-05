@@ -4,7 +4,7 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-require_once '../config.php'; // Use the mysqli connection
+require_once '../config.php'; 
 date_default_timezone_set('Asia/Kolkata');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -72,7 +72,6 @@ function getAllWeight($conn) {
 
     $result = $conn->query($sql);
 
-    // Check for query error
     if (!$result) {
         http_response_code(500);
         echo json_encode([

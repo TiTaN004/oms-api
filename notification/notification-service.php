@@ -128,7 +128,6 @@ class FirebaseNotificationService
             }
         }
 
-        // Clean up invalid tokens
         if (!empty($invalidTokens)) {
             $this->removeInvalidTokens($invalidTokens);
         }

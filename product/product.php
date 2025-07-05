@@ -14,7 +14,6 @@ $method = $_SERVER['REQUEST_METHOD'];
 $request_uri = $_SERVER['REQUEST_URI'];
 $path_parts = explode('/', trim($request_uri, '/'));
 
-// Create uploads directory if it doesn't exist
 $upload_dir = '../uploads/products/';
 if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0777, true);
@@ -162,7 +161,6 @@ function getProduct($conn, $id)
 // }
 
 function createProduct($conn) {
-    // Enable error reporting for debugging
     error_reporting(E_ALL);
     ini_set('display_errors', 1);
     
@@ -176,7 +174,6 @@ function createProduct($conn) {
     error_log("Product name: " . $product_name);
     error_log("Is active: " . ($is_active ? 'true' : 'false'));
     
-    // Validate required fields
     if (empty($product_name)) {
         error_log("Product name is empty");
         echo json_encode(['success' => false, 'error' => 'Product name is required']);
@@ -184,8 +181,6 @@ function createProduct($conn) {
     }
     
     $image_filename = null;
-    
-    // Handle image upload
     if (isset($_FILES['product_image'])) {
         error_log("Processing image upload...");
         $image_filename = handleImageUploadDebug($_FILES['product_image']);

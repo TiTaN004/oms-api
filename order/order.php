@@ -338,7 +338,6 @@ function getOrderHistory($orderId)
 
     $orderId = mysqli_real_escape_string($conn, $orderId);
 
-    // Get all versions of this order (including inactive ones)
     $query = "SELECT 
         o.orderID,
         o.parentOrderID,
@@ -434,7 +433,6 @@ function updateOrder($orderId)
         sendResponse('Invalid JSON data', 400, 0);
     }
 
-    // Check if order exists and is active
     $check_query = "SELECT * FROM `order` WHERE orderID = '$orderId' AND isActive = 1";
     $check_result = mysqli_query($conn, $check_query);
 
@@ -534,15 +532,12 @@ function updateOrder($orderId)
     //     return;
     // }
 
-    // If user is being reassigned, handle both original order update AND create new reassigned order
 if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order['fAssignUserID']) {
 
-    // ✅ STEP 1: UPDATE ORIGINAL ORDER with all requested changes (except user assignment)
     $update_original_fields = [];
     $update_original_fields[] = "updatedAt = NOW()";
     $update_original_fields[] = "remark = CONCAT(COALESCE(remark, ''), ' [Reassigned on " . date('Y-m-d H:i:s') . "]')";
     
-    // Apply all field updates to original order
     if (isset($input['fClientID'])) {
         $fClientID = mysqli_real_escape_string($conn, $input['fClientID']);
         $update_original_fields[] = "fClientID = '$fClientID'";
@@ -612,21 +607,15 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
         sendResponse('Error updating original order: ' . mysqli_error($conn), 500, 0);
     }
 
-    // ✅ STEP 2: CREATE NEW REASSIGNED ORDER with NEW operation type and NEW user
-    
-    // Get UPDATED values from original order (after our update)
     $updated_order_query = "SELECT * FROM `order` WHERE orderID = '$orderId'";
     $updated_order_result = mysqli_query($conn, $updated_order_query);
     $updated_order = mysqli_fetch_assoc($updated_order_result);
     
-    // Determine the original order ID (parent chain)
     $originalOrderID = $current_order['parentOrderID'] ?? $current_order['orderID'];
     $new_fAssignUserID = mysqli_real_escape_string($conn, $input['fAssignUserID']);
     
-    // ✅ For NEW order: Use the UPDATED operation type from request (for reassignment)
     $new_fOperationID = isset($input['operationType']) ? mysqli_real_escape_string($conn, $input['operationType']) : $updated_order['operationType'];
 
-    // Create new reassigned order with updated values
     $insert_query = "INSERT INTO `order` (
         parentOrderID, orderNo, fClientID, fProductID, fOperationID, fAssignUserID, 
         orderOn, weight, WeightTypeID, productWeight, productWeightTypeID, 
@@ -658,7 +647,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
     if (mysqli_query($conn, $insert_query)) {
         $newOrderId = mysqli_insert_id($conn);
 
-        // Get user names and operation names for response
         $info_query = "SELECT 
             (SELECT fullName FROM user WHERE userID = '{$current_order['fAssignUserID']}') as previousUser,
             (SELECT fullName FROM user WHERE userID = '$new_fAssignUserID') as newUser,
@@ -667,7 +655,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
         $info_result = mysqli_query($conn, $info_query);
         $info = mysqli_fetch_assoc($info_result);
 
-        // ✅ Send notification to NEW user
         $result = $notificationService->sendNewOrderNotification(
             $new_fAssignUserID,
             $updated_order["orderNo"],
@@ -706,7 +693,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
                 sendResponse('Updated order data not found', 404, 0);
                 return;
             }
-            // Format the updated order data
             $updated_order_data = [
                 'orderID' => $updated_order_raw['orderID'],
                 'orderNo' => $updated_order_raw['orderNo'],
@@ -743,7 +729,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
     return;
 }
 
-    // Regular update for other fields (same as before)
     $update_fields = [];
 
     if (isset($input['fClientID'])) {
@@ -801,7 +786,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
         $update_fields[] = "status = '$status'";
     }
 
-    // Recalculate totals if needed
     if (isset($input['productQty']) || isset($input['pricePerQty'])) {
         $qty = isset($input['productQty']) ? $input['productQty'] : $current_order['productQty'];
         $price = isset($input['pricePerQty']) ? $input['pricePerQty'] : $current_order['pricePerQty'];
@@ -855,7 +839,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
                 sendResponse('Updated order data not found', 404, 0);
                 return;
             }
-            // Format the updated order data
             $updated_order_data = [
                 'orderID' => $updated_order_raw['orderID'],
                 'orderNo' => $updated_order_raw['orderNo'],
@@ -885,7 +868,6 @@ if (isset($input['fAssignUserID']) && $input['fAssignUserID'] != $current_order[
             ];
 
             sendResponse('Order updated successfully!', 200, 1, $updated_order_data);
-            // sendResponse('Order updated successfully!', 200, 1,$orderData);
         } else {
             sendResponse('No changes made to the order', 200, 1);
         }
@@ -911,10 +893,8 @@ function createOrder()
         sendResponse('Missing required fields: ' . implode(', ', $missing_fields), 400, 0);
     }
 
-    // Generate order number
     $orderNo = generateOrderNumber();
 
-    // Calculate total price and weight
     $totalPrice = floatval($input['productQty']) * floatval($input['pricePerQty'] ?? 0);
     $totalWeight = floatval($input['weight']) + floatval($input['productWeight']);
 
@@ -962,7 +942,6 @@ function createOrder()
         $assignUserName = $extraData['assignUserName'] ?? '';
         $operationName = $extraData['operationName'] ?? '';
 
-        // ✅ Send notification
         $result = $notificationService->sendNewOrderNotification(
             $fAssignUserID,
             $orderNo,
@@ -973,12 +952,6 @@ function createOrder()
                 'order_id' => $orderId
             ]
         );
-
-        // if ($result['success']) {
-        //     echo "Notification sent successfully!";
-        // } else {
-        //     echo "Failed to send notification: " . $result['message'];
-        // }
 
         $orderData = [
             'orderID' => $orderId,
@@ -1008,7 +981,6 @@ function createOrder()
         ];
 
         sendResponse('Order created successfully!', 200, 1, $orderData);
-        // sendResponse('Order created successfully!', 200, 1, ['order' => $orderData, "notification" => $result['message']]);
     } else {
         sendResponse('Error creating order: ' . mysqli_error($conn), 500, 0);
     }
@@ -1047,7 +1019,6 @@ function deleteOrder($orderId)
     global $conn;
     $orderId = mysqli_real_escape_string($conn, $orderId);
 
-    // find the root (original) order
     $rootQ  = "SELECT COALESCE(parentOrderID, orderID) AS rootID
                FROM `order` WHERE orderID = '$orderId' LIMIT 1";
     $rootRes = mysqli_query($conn, $rootQ);
@@ -1056,16 +1027,13 @@ function deleteOrder($orderId)
     }
     $rootID = mysqli_fetch_assoc($rootRes)['rootID'];
 
-    // delete in two steps inside a transaction
     mysqli_begin_transaction($conn);
     try {
-        // 1- delete children
         mysqli_query(
             $conn,
             "DELETE FROM `order` WHERE parentOrderID = '$rootID'"
         );
 
-        // 2- delete the parent
         mysqli_query(
             $conn,
             "DELETE FROM `order` WHERE orderID = '$rootID'"

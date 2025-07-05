@@ -4,16 +4,13 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
-// Include MySQLi DB connection
-require_once '../config.php'; // make sure this sets $conn (MySQLi connection)
+require_once '../config.php'; 
 
 try {
-    // Get parameters
     $userID = isset($_GET['userID']) ? mysqli_real_escape_string($conn, $_GET['userID']) : null;
     $isAdmin = isset($_GET['isAdmin']) && $_GET['isAdmin'] === 'true';
 
     if ($isAdmin) {
-        // For admin: Count all unique parent orders (original orders only)
         $query = "
         SELECT 
             COUNT(*) as total_orders,
@@ -34,7 +31,6 @@ try {
             GROUP BY COALESCE(o.parentOrderID, o.orderID)
         ) as unique_orders";
     } else {
-        // For specific user: Count unique parent orders assigned to this user
         if (!$userID) {
             http_response_code(400);
             echo json_encode([
@@ -72,7 +68,6 @@ try {
         ) as unique_orders";
     }
 
-    // Execute query
     $result = mysqli_query($conn, $query);
 
     if (!$result) {

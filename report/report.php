@@ -8,7 +8,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit(0);
 }
 
-require_once '../config.php'; // assumes $conn is defined in config.php
+require_once '../config.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $request = $_SERVER['REQUEST_URI'];
@@ -380,14 +380,12 @@ function getFilteredReports($conn)
         )
     ";
 
-    // Add dynamic filters
     if (!empty($conditions)) {
         $sql .= " AND " . implode(" AND ", $conditions);
     }
 
     $sql .= " ORDER BY o.orderOn DESC";
 
-    // Pagination
     if (isset($input['limit']) && intval($input['limit']) > 0) {
         $sql .= " LIMIT " . intval($input['limit']);
         if (isset($input['offset']) && intval($input['offset']) > 0) {
