@@ -89,6 +89,7 @@ class LoginAPI {
                 'mobileNo' => $user['mobileNo'],
                 'emailID' => $user['emailID'],
                 'token' => $token,
+                'password' => $user['password'],
                 'isActive' => (bool)$user['isActive'],
                 'isAdmin' => (bool)$user['isAdmin']
             ];

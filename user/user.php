@@ -154,6 +154,24 @@ function updateUser($conn, $input) {
     }
 }
 
+// function deleteUser($conn) {
+//     $userID = $_GET['id'] ?? null;
+
+//     if (empty($userID)) {
+//         sendResponse('User ID is required', 400, 0, null);
+//         return;
+//     }
+
+//     $stmt = $conn->prepare("DELETE from user WHERE userID = ?");
+//     $stmt->bind_param("i", $userID);
+
+//     if ($stmt->execute() && $stmt->affected_rows > 0) {
+//         sendResponse('User deleted successfully!', 200, 1, null);
+//     } else {
+//         sendResponse('User not found', 404, 0, null);
+//     }
+// }
+
 function deleteUser($conn) {
     $userID = $_GET['id'] ?? null;
 
@@ -162,15 +180,43 @@ function deleteUser($conn) {
         return;
     }
 
-    $stmt = $conn->prepare("DELETE from user WHERE userID = ?");
-    $stmt->bind_param("i", $userID);
+    // Delete from password_reset_tokens
+    $stmt1 = $conn->prepare("DELETE FROM password_reset_tokens WHERE userID = ?");
+    if (!$stmt1) {
+        error_log("Prepare failed (password_reset_tokens): " . $conn->error);
+    } else {
+        $stmt1->bind_param("i", $userID);
+        $stmt1->execute();
+    }
 
+    // Delete from user_devices
+    $stmt2 = $conn->prepare("DELETE FROM user_devices WHERE userID = ?");
+    if (!$stmt2) {
+        error_log("Prepare failed (user_devices): " . $conn->error);
+    } else {
+        $stmt2->bind_param("i", $userID);
+        $stmt2->execute();
+    }
+
+    // Delete from user
+    $stmt = $conn->prepare("DELETE FROM user WHERE userID = ?");
+    if (!$stmt) {
+        error_log("Prepare failed (user): " . $conn->error);
+        sendResponse('Internal server error', 500, 0, null);
+        return;
+    }
+
+    $stmt->bind_param("i", $userID);
     if ($stmt->execute() && $stmt->affected_rows > 0) {
         sendResponse('User deleted successfully!', 200, 1, null);
     } else {
-        sendResponse('User not found', 404, 0, null);
+        error_log("Delete failed or user not found. ID: $userID, Affected rows: " . $stmt->affected_rows);
+        sendResponse('User not found or deletion failed', 404, 0, null);
     }
 }
+
+
+
 
 function sendResponse($message, $statusCode, $outVal, $data) {
     http_response_code($statusCode);
