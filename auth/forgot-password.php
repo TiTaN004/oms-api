@@ -88,7 +88,7 @@ class ForgotPasswordAPI {
             $mail->Host       = 'smtp.hostinger.com'; // Change to your SMTP server
             $mail->SMTPAuth   = true;
             $mail->Username   = 'hello@buzzimgenerator.com'; // Your email
-            $mail->Password   = 'Mnr217004nsr*'; // Your app password
+            $mail->Password   = 'M_n_r217004Nsr'; // Your app password
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port       = 587;
             

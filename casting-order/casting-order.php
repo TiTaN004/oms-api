@@ -99,7 +99,14 @@ function getAllCastingOrders($conn) {
             LEFT JOIN user u ON co.fAssignUserID = u.userID
             LEFT JOIN product p ON co.fProductID = p.id
             WHERE u.isActive = 1 AND p.is_active = 1
-            ORDER BY co.CastingOrderId DESC";
+            ";
+            
+                if (isset($_GET['userID']) && !empty($_GET['userID'])) {
+        $userID = intval($_GET['userID']);
+        $sql .= " AND u.userID = $userID";
+    }
+
+    $sql .= " ORDER BY co.CastingOrderId DESC";
 
     $result = $conn->query($sql);
 

@@ -83,65 +83,65 @@ try {
     // Get headers
 // logout.php
 
-$headers = getallheaders();
-$userId  = $_GET['userId'] ?? null;
-$token = (isset($_GET['token']) && $_GET['token'] === '-') 
-    ? ($headers['Authorization'] ?? null) 
-    : ($_GET['token'] ?? null);
+// $headers = getallheaders();
+// $userId  = $_GET['userId'] ?? null;
+// $token = (isset($_GET['token']) && $_GET['token'] === '-') 
+//     ? ($headers['Authorization'] ?? null) 
+//     : ($_GET['token'] ?? null);
 
 
-    if (!$userId || !$token) {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Unauthorized',
-            'token' => $token,
-        ]);
-        exit;
-    }
+//     if (!$userId || !$token) {
+//         http_response_code(401);
+//         echo json_encode([
+//             'success' => false,
+//             'message' => 'Unauthorized',
+//             'token' => $token,
+//         ]);
+//         exit;
+//     }
 
-    // Check prepare for token nullification
-    $stmt = $conn->prepare("UPDATE user SET token = NULL WHERE userID = ? AND token = ?");
-    if (!$stmt) {
-        throw new Exception("Prepare failed: " . $conn->error);
-    }
+//     // Check prepare for token nullification
+//     $stmt = $conn->prepare("UPDATE user SET token = NULL WHERE userID = ? AND token = ?");
+//     if (!$stmt) {
+//         throw new Exception("Prepare failed: " . $conn->error);
+//     }
 
-    $stmt->bind_param("is", $userId, $token);
-    $stmt->execute();
+//     $stmt->bind_param("is", $userId, $token);
+//     $stmt->execute();
 
-    if ($stmt->affected_rows > 0) {
-        // Clear FCM token as well
-        $stmt2 = $conn->prepare("UPDATE user_devices SET device_token = NULL WHERE userID = ?");
-        if (!$stmt2) {
-            throw new Exception("Prepare (FCM clear) failed: " . $conn->error);
-        }
+//     if ($stmt->affected_rows > 0) {
+//         // Clear FCM token as well
+//         $stmt2 = $conn->prepare("UPDATE user_devices SET device_token = NULL WHERE userID = ?");
+//         if (!$stmt2) {
+//             throw new Exception("Prepare (FCM clear) failed: " . $conn->error);
+//         }
 
-        $stmt2->bind_param("i", $userId);
-        $stmt2->execute();
+//         $stmt2->bind_param("i", $userId);
+//         $stmt2->execute();
 
-        echo json_encode([
-            'success' => true,
-            'data' => true,
-            'message' => 'Logout successful'
-        ]);
-    } else {
-        http_response_code(401);
-        echo json_encode([
-            'success' => false,
-            'message' => 'Invalid session'
-        ]);
-    }
+//         echo json_encode([
+//             'success' => true,
+//             'data' => true,
+//             'message' => 'Logout successful'
+//         ]);
+//     } else {
+//         http_response_code(401);
+//         echo json_encode([
+//             'success' => false,
+//             'message' => 'Invalid session'
+//         ]);
+//     }
 
-    $stmt->close();
-    if (isset($stmt2)) {
-        $stmt2->close();
-    }
+//     $stmt->close();
+//     if (isset($stmt2)) {
+//         $stmt2->close();
+//     }
 
-    // echo json_encode([
-    //     'success' => true,
-    //     'data' => true,
-    //     'message' => 'Logout successful'
-    // ]);
+    echo json_encode([
+        'success' => true,
+        'data' => true,
+        'message' => 'Logout successful'
+    ]);
 
 } catch (Exception $e) {
     http_response_code(500);
