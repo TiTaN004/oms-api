@@ -80,8 +80,96 @@ switch ($method) {
 //     echo json_encode(['success' => true, 'data' => $orders]);
 // }
 
+// function getAllCastingOrders($conn) {
+//     $sql = "SELECT 
+//                 co.CastingOrderId as id,
+//                 cm.clientName as client,
+//                 u.fullName as user,
+//                 p.product_name as product,
+//                 co.quantity as qty,
+//                 co.size,
+//                 co.status,
+//                 DATE(co.order_date) as orderDate,
+//                 co.fClientID,
+//                 co.fAssignUserID,
+//                 co.fProductID,
+//                 co.fOperationID
+//             FROM casting_order co
+//             LEFT JOIN client_master cm ON co.fClientID = cm.id
+//             LEFT JOIN user u ON co.fAssignUserID = u.userID
+//             LEFT JOIN product p ON co.fProductID = p.id
+//             WHERE u.isActive = 1 AND p.is_active = 1
+//             ";
+            
+//                 if (isset($_GET['userID']) && !empty($_GET['userID'])) {
+//         $userID = intval($_GET['userID']);
+//         $sql .= " AND u.userID = $userID";
+//     }
+
+//     $sql .= " ORDER BY co.CastingOrderId DESC";
+
+//     $result = $conn->query($sql);
+
+//     // Check for query error
+//     if (!$result) {
+//         http_response_code(500);
+//         echo json_encode([
+//             'success' => false,
+//             'error' => 'Query failed: ' . $conn->error
+//         ]);
+//         return;
+//     }
+
+//     $orders = [];
+//     while ($row = $result->fetch_assoc()) {
+//         $row['status'] = strtolower($row['status']) === 'processing' ? 'pending' : strtolower($row['status']);
+//         $orders[] = $row;
+//     }
+
+//     echo json_encode(['success' => true, 'data' => $orders]);
+// }
+
 function getAllCastingOrders($conn) {
+    $userID = $_GET['userID'] ?? null;
+    
+    // Get pagination parameters from request body or GET parameters
+    $input = json_decode(file_get_contents('php://input'), true);
+    $pageIndex = isset($input['pageIndex']) ? (int)$input['pageIndex'] : 
+                (isset($_GET['pageIndex']) ? (int)$_GET['pageIndex'] : 0);
+    $pageSize = isset($input['pageSize']) ? (int)$input['pageSize'] : 
+               (isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : 10);
+    $getCount = isset($input['getCount']) ? (bool)$input['getCount'] : 
+               (isset($_GET['getCount']) ? (bool)$_GET['getCount'] : false);
+
+    // Calculate offset for pagination
+    $offset = $pageIndex * $pageSize;
+
+    // Base query for count (if requested)
+    $countQuery = "SELECT COUNT(*) as total FROM casting_order co
+                   LEFT JOIN client_master cm ON co.fClientID = cm.id
+                   LEFT JOIN user u ON co.fAssignUserID = u.userID
+                   LEFT JOIN product p ON co.fProductID = p.id
+                   WHERE u.isActive = 1 AND p.is_active = 1";
+    
+    // Add user filter to count query if needed
+    if ($userID) {
+        $userID = intval($userID);
+        $countQuery .= " AND u.userID = $userID";
+    }
+
+    // Get total count if requested
+    $totalCount = 0;
+    if ($getCount) {
+        $countResult = $conn->query($countQuery);
+        if ($countResult) {
+            $countRow = $countResult->fetch_assoc();
+            $totalCount = (int)$countRow['total'];
+        }
+    }
+
+    // Main query with pagination
     $sql = "SELECT 
+                ROW_NUMBER() OVER (ORDER BY co.CastingOrderId DESC) as rowNumber,
                 co.CastingOrderId as id,
                 cm.clientName as client,
                 u.fullName as user,
@@ -98,15 +186,15 @@ function getAllCastingOrders($conn) {
             LEFT JOIN client_master cm ON co.fClientID = cm.id
             LEFT JOIN user u ON co.fAssignUserID = u.userID
             LEFT JOIN product p ON co.fProductID = p.id
-            WHERE u.isActive = 1 AND p.is_active = 1
-            ";
+            WHERE u.isActive = 1 AND p.is_active = 1";
             
-                if (isset($_GET['userID']) && !empty($_GET['userID'])) {
-        $userID = intval($_GET['userID']);
+    // Add user filter to main query if needed
+    if ($userID) {
         $sql .= " AND u.userID = $userID";
     }
 
-    $sql .= " ORDER BY co.CastingOrderId DESC";
+    $sql .= " ORDER BY co.CastingOrderId DESC
+              LIMIT $pageSize OFFSET $offset";
 
     $result = $conn->query($sql);
 
@@ -126,7 +214,23 @@ function getAllCastingOrders($conn) {
         $orders[] = $row;
     }
 
-    echo json_encode(['success' => true, 'data' => $orders]);
+    // Prepare pagination metadata
+    $paginationData = [
+        'pageIndex' => $pageIndex,
+        'pageSize' => $pageSize,
+        'totalCount' => $getCount ? $totalCount : null,
+        'hasMore' => count($orders) === $pageSize
+    ];
+
+    // Send response with orders as data and pagination as separate property
+    echo json_encode([
+        'success' => true,
+        'message' => 'Records Get Successfully!',
+        'statusCode' => 200,
+        'outVal' => 1,
+        'data' => $orders,
+        'pagination' => $paginationData
+    ]);
 }
 
 function getCastingOrder($conn, $id) {
