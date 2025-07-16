@@ -185,6 +185,86 @@ switch ($method) {
 //     sendResponse('Records Get Successfully!', 200, 1, $orders);
 // }
 
+// function getAllOrders()
+// {
+//     global $conn;
+
+//     $userID = $_GET['userID'] ?? null;
+//     $isAdmin = $_GET['isAdmin'] ?? 'false';
+//     $isAdmin = $isAdmin === 'true'; // ensure it's boolean
+
+//     // Base query
+//     $query = "SELECT 
+//     ROW_NUMBER() OVER (ORDER BY o.orderID DESC) as rowNumber,
+//     o.orderID,
+//     o.parentOrderID,
+//     COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+//     o.orderNo,
+//     DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+//     o.fClientID,
+//     cm.clientName,
+//     o.fProductID,
+//     p.product_name as productName,
+//     o.weight,
+//     o.WeightTypeID as weightTypeID,
+//     CONCAT(o.weight, ' ', wt.name) as weightTypeText,
+//     o.productWeight,
+//     CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
+//     o.productQty,
+//     o.pricePerQty,
+//     o.totalPrice,
+//     p.product_image,
+//     o.description,
+//     o.fOperationID,
+//     ot.operationName,
+//     o.fAssignUserID as fUserAssignID,
+//     u.fullName as assignUser,
+//     1 as isDelete,
+//     o.productWeightTypeID,
+//     o.totalWeight,
+//     o.isActive,
+//     o.status,
+//     DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+//     (
+//         SELECT COUNT(*) FROM `order` o2 
+//         WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)
+//     ) as assignmentCount
+// FROM `order` o
+// LEFT JOIN client_master cm ON o.fClientID = cm.id
+// LEFT JOIN product p ON o.fProductID = p.id
+// LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
+// LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
+// LEFT JOIN operation_type ot ON o.fOperationID = ot.id
+// LEFT JOIN user u ON o.fAssignUserID = u.userID
+// WHERE o.orderID IN (
+//     SELECT MAX(orderID)
+//     FROM `order`
+//     ";
+
+//     // 👇 Now inject condition *inside* subquery
+//     if (!$isAdmin && $userID) {
+//         $userID = mysqli_real_escape_string($conn, $userID);
+//         $query .= "WHERE fAssignUserID = '$userID' ";
+//     }
+
+//     $query .= "GROUP BY COALESCE(parentOrderID, orderID)
+// )
+// ORDER BY o.orderID DESC";
+
+//     $result = mysqli_query($conn, $query);
+
+//     if (!$result) {
+//         sendResponse('Error fetching orders: ' . mysqli_error($conn), 500, 0);
+//     }
+
+//     $orders = [];
+//     while ($row = mysqli_fetch_assoc($result)) {
+//         $orders[] = $row;
+//     }
+
+//     sendResponse('Records Get Successfully!', 200, 1, $orders);
+// }
+
 function getAllOrders()
 {
     global $conn;
@@ -193,63 +273,104 @@ function getAllOrders()
     $isAdmin = $_GET['isAdmin'] ?? 'false';
     $isAdmin = $isAdmin === 'true'; // ensure it's boolean
 
-    // Base query
-    $query = "SELECT 
-    ROW_NUMBER() OVER (ORDER BY o.orderID DESC) as rowNumber,
-    o.orderID,
-    o.parentOrderID,
-    COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
-    o.orderNo,
-    DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
-    o.fClientID,
-    cm.clientName,
-    o.fProductID,
-    p.product_name as productName,
-    o.weight,
-    o.WeightTypeID as weightTypeID,
-    CONCAT(o.weight, ' ', wt.name) as weightTypeText,
-    o.productWeight,
-    CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
-    o.productQty,
-    o.pricePerQty,
-    o.totalPrice,
-    p.product_image,
-    o.description,
-    o.fOperationID,
-    ot.operationName,
-    o.fAssignUserID as fUserAssignID,
-    u.fullName as assignUser,
-    1 as isDelete,
-    o.productWeightTypeID,
-    o.totalWeight,
-    o.isActive,
-    o.status,
-    DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
-    (
-        SELECT COUNT(*) FROM `order` o2 
-        WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)
-    ) as assignmentCount
-FROM `order` o
-LEFT JOIN client_master cm ON o.fClientID = cm.id
-LEFT JOIN product p ON o.fProductID = p.id
-LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
-LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
-LEFT JOIN operation_type ot ON o.fOperationID = ot.id
-LEFT JOIN user u ON o.fAssignUserID = u.userID
-WHERE o.orderID IN (
-    SELECT MAX(orderID)
-    FROM `order`
-    ";
+    // Get pagination parameters from request body
+    $input = json_decode(file_get_contents('php://input'), true);
+    $pageIndex = isset($input['pageIndex']) ? (int)$input['pageIndex'] : 
+                (isset($_GET['pageIndex']) ? (int)$_GET['pageIndex'] : 0);
+    $pageSize = isset($input['pageSize']) ? (int)$input['pageSize'] : 
+               (isset($_GET['pageSize']) ? (int)$_GET['pageSize'] : 10);
+    $getCount = isset($input['getCount']) ? (bool)$input['getCount'] : 
+               (isset($_GET['getCount']) ? (bool)$_GET['getCount'] : false);
 
-    // 👇 Now inject condition *inside* subquery
+    // Calculate offset for pagination
+    $offset = $pageIndex * $pageSize;
+
+    // Base query for count (if requested)
+    $countQuery = "SELECT COUNT(*) as total FROM (
+        SELECT o.orderID
+        FROM `order` o
+        WHERE o.orderID IN (
+            SELECT MAX(orderID)
+            FROM `order`
+            ";
+
+    // Add user filter to count query if needed
     if (!$isAdmin && $userID) {
         $userID = mysqli_real_escape_string($conn, $userID);
+        $countQuery .= "WHERE fAssignUserID = '$userID' ";
+    }
+
+    $countQuery .= "GROUP BY COALESCE(parentOrderID, orderID)
+        )
+    ) as countTable";
+
+    // Get total count if requested
+    $totalCount = 0;
+    if ($getCount) {
+        $countResult = mysqli_query($conn, $countQuery);
+        if ($countResult) {
+            $countRow = mysqli_fetch_assoc($countResult);
+            $totalCount = (int)$countRow['total'];
+        }
+    }
+
+    // Main query with pagination
+    $query = "SELECT 
+        ROW_NUMBER() OVER (ORDER BY o.orderID DESC) as rowNumber,
+        o.orderID,
+        o.parentOrderID,
+        COALESCE(o.parentOrderID, o.orderID) as originalOrderID,
+        o.orderNo,
+        DATE_FORMAT(o.orderOn, '%d-%b-%Y') as orderOn,
+        o.fClientID,
+        cm.clientName,
+        o.fProductID,
+        p.product_name as productName,
+        o.weight,
+        o.WeightTypeID as weightTypeID,
+        CONCAT(o.weight, ' ', wt.name) as weightTypeText,
+        o.productWeight,
+        CONCAT(o.productWeight, ' ', pwt.name) as productWeightText,
+        o.productQty,
+        o.pricePerQty,
+        o.totalPrice,
+        p.product_image,
+        o.description,
+        o.fOperationID,
+        ot.operationName,
+        o.fAssignUserID as fUserAssignID,
+        u.fullName as assignUser,
+        1 as isDelete,
+        o.productWeightTypeID,
+        o.totalWeight,
+        o.isActive,
+        o.status,
+        DATE_FORMAT(o.createdAt, '%d-%b-%Y %H:%i') as assignedOn,
+        (
+            SELECT COUNT(*) FROM `order` o2 
+            WHERE COALESCE(o2.parentOrderID, o2.orderID) = COALESCE(o.parentOrderID, o.orderID)
+        ) as assignmentCount
+    FROM `order` o
+    LEFT JOIN client_master cm ON o.fClientID = cm.id
+    LEFT JOIN product p ON o.fProductID = p.id
+    LEFT JOIN weight_type wt ON o.WeightTypeID = wt.id
+    LEFT JOIN weight_type pwt ON o.productWeightTypeID = pwt.id
+    LEFT JOIN operation_type ot ON o.fOperationID = ot.id
+    LEFT JOIN user u ON o.fAssignUserID = u.userID
+    WHERE o.orderID IN (
+        SELECT MAX(orderID)
+        FROM `order`
+        ";
+
+    // Add user filter to main query if needed
+    if (!$isAdmin && $userID) {
         $query .= "WHERE fAssignUserID = '$userID' ";
     }
 
     $query .= "GROUP BY COALESCE(parentOrderID, orderID)
-)
-ORDER BY o.orderID DESC";
+    )
+    ORDER BY o.orderID DESC
+    LIMIT $pageSize OFFSET $offset";
 
     $result = mysqli_query($conn, $query);
 
@@ -262,7 +383,16 @@ ORDER BY o.orderID DESC";
         $orders[] = $row;
     }
 
-    sendResponse('Records Get Successfully!', 200, 1, $orders);
+    // Prepare pagination metadata
+    $paginationData = [
+        'pageIndex' => $pageIndex,
+        'pageSize' => $pageSize,
+        'totalCount' => $getCount ? $totalCount : null,
+        'hasMore' => count($orders) === $pageSize
+    ];
+
+    // Send response with orders as data and pagination as separate property
+    sendResponse('Records Get Successfully!', 200, 1, $orders, $paginationData);
 }
 
 
@@ -1062,7 +1192,23 @@ function generateOrderNumber()
     return 'ORD' . str_pad($next_num, 3, '0', STR_PAD_LEFT);
 }
 
-function sendResponse($message, $statusCode = 200, $outVal = 1, $data = null)
+// function sendResponse($message, $statusCode = 200, $outVal = 1, $data = null)
+// {
+//     $response = [
+//         'message' => $message,
+//         'statusCode' => $statusCode,
+//         'outVal' => $outVal
+//     ];
+
+//     if ($data !== null) {
+//         $response['data'] = $data;
+//     }
+
+//     echo json_encode($response);
+//     exit;
+// }
+
+function sendResponse($message, $statusCode = 200, $outVal = 1, $data = null, $pagination = null)
 {
     $response = [
         'message' => $message,
@@ -1072,6 +1218,10 @@ function sendResponse($message, $statusCode = 200, $outVal = 1, $data = null)
 
     if ($data !== null) {
         $response['data'] = $data;
+    }
+
+    if ($pagination !== null) {
+        $response['pagination'] = $pagination;
     }
 
     echo json_encode($response);
